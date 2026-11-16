@@ -1,3 +1,20 @@
+# VireoAirTV
+
+Receptor AirPlay para Android TV, independiente de VireoLumaTV. Fork de [jqssun/android-airplay-server](https://github.com/jqssun/android-airplay-server) (GPL-3.0), basado en [UxPlay](https://github.com/FDH2/UxPlay).
+
+- Arquitectura objetivo: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md)
+- Auditoría y plan: [docs/AUDITORIA.md](docs/AUDITORIA.md)
+- Sincronización con upstream: [docs/UPSTREAM.md](docs/UPSTREAM.md)
+
+```bash
+git clone --recursive https://github.com/ReinierTutoriales/VireoAirTV
+cd VireoAirTV && ./gradlew assembleDebug
+```
+
+---
+
+## README original (upstream)
+
 # AirPlay Receiver for Android
 
 [![Stars](https://img.shields.io/github/stars/jqssun/android-airplay-server)](https://github.com/jqssun/android-airplay-server)
