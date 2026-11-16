@@ -13,6 +13,11 @@ import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -56,8 +61,10 @@ import io.github.jqssun.airplay.renderer.AirPlayVideoPlayer
 import io.github.jqssun.airplay.renderer.AudioRenderer
 import io.github.jqssun.airplay.renderer.VideoRenderer
 import io.github.jqssun.airplay.viewmodel.DebugInfo
+import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -84,6 +91,22 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private var wakeLock: PowerManager.WakeLock? = null
     private var foregroundStarted = false
     private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
+
+    // IPv4 only: IPv6 temporary addresses rotate and would restart live sessions
+    private val connectivityManager by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
+    private val _lanNetworks = ConcurrentHashMap<Network, Set<String>>()
+    private val _lanAddresses = MutableStateFlow<Set<String>>(emptySet())
+    private var _advertisedAddresses: Set<String> = emptySet()
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            connectivityManager.getLinkProperties(network)?.let { _updateLan(network, it) }
+        }
+        override fun onLinkPropertiesChanged(network: Network, lp: LinkProperties) = _updateLan(network, lp)
+        override fun onLost(network: Network) {
+            _lanNetworks.remove(network)
+            _lanAddresses.value = _lanNetworks.values.flatten().toSet()
+        }
+    }
 
     val videoRenderer = VideoRenderer(this)
     val audioRenderer = AudioRenderer()
@@ -345,6 +368,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 .debounce(SERVER_RESTART_DEBOUNCE_MS)
                 .collect { _restartServer() }
         }
+        val lanRequest = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        connectivityManager.registerNetworkCallback(lanRequest, networkCallback)
+        lifecycleScope.launch {
+            _lanAddresses
+                .debounce(NETWORK_RESTART_DEBOUNCE_MS)
+                .collect { addrs ->
+                    if (addrs.isEmpty() || addrs == _advertisedAddresses || prefs[Prefs.USB_ONLY]) return@collect
+                    if (_advertisedAddresses.isEmpty()) { _advertisedAddresses = addrs; return@collect }
+                    log("LAN address changed to $addrs, restarting server")
+                    _restartServer()
+                }
+        }
+    }
+
+    private fun _updateLan(network: Network, lp: LinkProperties) {
+        _lanNetworks[network] = lp.linkAddresses.mapNotNull { (it.address as? Inet4Address)?.hostAddress }.toSet()
+        _lanAddresses.value = _lanNetworks.values.flatten().toSet()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -468,6 +512,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         }
 
         _serverState.value = ServerState.RUNNING
+        _advertisedAddresses = _lanAddresses.value
         if (ensureServiceStarted) {
             ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
         }
@@ -632,6 +677,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onDestroy() {
+        try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
         stopServer()
         dacpPlayer.release()
         mediaReceiver?.let {
@@ -1201,6 +1247,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
         private const val AUDIO_CONFIG_DEBOUNCE_MS = 500L
         private const val SERVER_RESTART_DEBOUNCE_MS = 500L
+        // waits for DHCP to settle so one address change causes one restart
+        private const val NETWORK_RESTART_DEBOUNCE_MS = 2_000L
 
         // airplay volume is linear in dB along sender slider
         private fun _dbToFrac(db: Float) = if (db <= -144f) 0f else ((db + 30f) / 30f).coerceIn(0f, 1f)
