@@ -348,12 +348,20 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_START_SERVER) {
-            promoteToForeground()
+        // null intent: the system restarted this sticky service after killing the process
+        if (intent == null || intent.action == ACTION_START_SERVER) {
+            try {
+                promoteToForeground()
+            } catch (e: IllegalStateException) {
+                // ForegroundServiceStartNotAllowedException (API 31+) extends IllegalStateException
+                log("Foreground start not allowed: ${e.message}")
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
             _startServer(ensureServiceStarted = false)
             if (_serverState.value != ServerState.RUNNING) stopSelf(startId)
         }
-        return START_NOT_STICKY
+        return if (_serverState.value == ServerState.RUNNING) START_STICKY else START_NOT_STICKY
     }
 
     fun startServer() {
