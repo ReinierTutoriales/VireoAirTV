@@ -12,6 +12,12 @@ val localProps = Properties().apply {
 }
 
 val allAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+val debugAbis = (findProperty("abiFilter") as String?)
+    ?.split(",")
+    ?.map { it.trim() }
+    ?.filter { it.isNotEmpty() }
+    ?.takeIf { it.isNotEmpty() }
+    ?: allAbis
 
 android {
     namespace = "io.github.jqssun.airplay"
@@ -52,7 +58,7 @@ android {
 
     buildTypes {
         debug {
-            ndk { abiFilters += allAbis }
+            ndk { abiFilters += debugAbis }
         }
         release {
             isMinifyEnabled = true

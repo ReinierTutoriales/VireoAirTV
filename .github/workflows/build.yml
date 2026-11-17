@@ -25,7 +25,14 @@ jobs:
           java-version: "21"
           cache: "gradle"
 
-      - name: Build
+      - name: Build & Lint (PR, arm64-v8a)
+        if: github.event_name == 'pull_request'
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug lintDebug -PabiFilter=arm64-v8a --stacktrace
+
+      - name: Build (main, all ABIs)
+        if: github.event_name != 'pull_request'
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --stacktrace
