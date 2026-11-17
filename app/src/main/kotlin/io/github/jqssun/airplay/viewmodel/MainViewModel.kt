@@ -278,13 +278,73 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         }
     }
 
+    private var _serviceJobs: Job? = null
+
     // service binding
     fun bindService(svc: AirPlayService) {
+        _serviceJobs?.cancel()
         service = svc
         updateFromService()
+        _serviceJobs = viewModelScope.launch {
+            launch { svc.serverState.collect { _serverState.value = it } }
+            launch { svc.connectionCount.collect { _connectionCount.value = it } }
+            launch { svc.videoAspect.collect { _videoAspect.value = it } }
+            launch { svc.videoResolution.collect { _videoResolution.value = it } }
+            launch { svc.audioOnly.collect { _audioOnly.value = it } }
+            launch { svc.mirroringActive.collect { _mirroringActive.value = it } }
+            launch { svc.trackInfo.collect { _trackInfo.value = it } }
+            launch { svc.videoDownloader.progress.collect { _videoDownloadProgress.value = it } }
+            launch {
+                svc.videoPlaySeq.collect { playSeq ->
+                    if (playSeq != _lastVideoPlaySeq) {
+                        // fresh /play (incl. back-to-back): drop stale overlay and scrub state
+                        _lastVideoPlaySeq = playSeq
+                        _videoPlaying.value = true
+                        _videoActionAt = 0
+                        _videoOverlayTick.value = 0
+                        _videoSpeed.value = 1f
+                        _videoSkipSilence.value = false
+                        _scrubJob?.cancel()
+                        _videoScrubPositionMs.value = null
+                    }
+                }
+            }
+            launch {
+                svc.videoPlaybackActive.collect { active ->
+                    _videoPlaybackActive.value = active
+                    if (!active) {
+                        _videoPositionMs.value = 0
+                        _videoDurationMs.value = 0
+                        _videoBuffering.value = false
+                    }
+                }
+            }
+            launch {
+                svc.videoPlaybackInfo.collect { info ->
+                    if (!svc.videoPlaybackActive.value) return@collect
+                    _videoPositionMs.value = info.positionMs
+                    _videoDurationMs.value = info.durationMs
+                    if (SystemClock.elapsedRealtime() - _videoParamsActionAt > VIDEO_ACTION_SYNC_HOLD_MS) {
+                        _videoSpeed.value = info.speed
+                        _videoSkipSilence.value = info.skipSilence
+                    }
+                    _videoBuffering.value = info.buffering
+                    // stale snapshots must not overwrite a just-made optimistic action
+                    if (SystemClock.elapsedRealtime() - _videoActionAt > VIDEO_ACTION_SYNC_HOLD_MS) {
+                        _videoPlaying.value = info.playing
+                    }
+                }
+            }
+            launch { svc.videoPlaybackAspect.collect { _videoPlaybackAspect.value = it } }
+            launch { svc.videoPlaybackSize.collect { _videoPlaybackSize.value = it } }
+            launch { svc.videoTitle.collect { _videoTitle.value = it.ifEmpty { svc.trackInfo.value.title } } }
+            launch { svc.videoLocation.collect { _videoLocation.value = it } }
+        }
     }
 
     fun unbindService() {
+        _serviceJobs?.cancel()
+        _serviceJobs = null
         service = null
     }
 
@@ -442,11 +502,17 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             }
             _mirroringActive.value = it.mirroringActive.value
             _trackInfo.value = it.trackInfo.value
-            _clientVolume.value = it.clientVolume()
-            _clientVolumeAdjustable.value = it.dacpController?.ready == true
-            if (pref(Prefs.DEBUG_ENABLED).value) {
-                _debugInfo.value = it.collectDebugInfo()
-            }
+            updatePolledMetrics()
+        }
+    }
+
+    fun updatePolledMetrics() {
+        val it = service ?: return
+        _videoSessionPending.value = it.videoSessionPending()
+        _clientVolume.value = it.clientVolume()
+        _clientVolumeAdjustable.value = it.dacpController?.ready == true
+        if (pref(Prefs.DEBUG_ENABLED).value) {
+            _debugInfo.value = it.collectDebugInfo()
         }
     }
 

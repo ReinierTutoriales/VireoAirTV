@@ -29,7 +29,9 @@ import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -77,9 +79,15 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) {
-                    viewModel.updateFromService()
-                    delay(200)
+                combine(viewModel.connectionCount, viewModel.pref(Prefs.DEBUG_ENABLED)) { conns, debug ->
+                    conns > 0 || debug
+                }.distinctUntilChanged().collectLatest { active ->
+                    if (active) {
+                        while (true) {
+                            viewModel.updatePolledMetrics()
+                            delay(200)
+                        }
+                    }
                 }
             }
         }
