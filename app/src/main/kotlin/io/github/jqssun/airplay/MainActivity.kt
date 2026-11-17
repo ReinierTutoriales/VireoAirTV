@@ -88,6 +88,8 @@ class MainActivity : ComponentActivity() {
                             viewModel.updatePolledMetrics()
                             delay(200)
                         }
+                    } else {
+                        viewModel.updatePolledMetrics()
                     }
                 }
             }
