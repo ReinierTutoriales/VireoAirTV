@@ -8,6 +8,10 @@
     <string name="notification_text">Accepting AirPlay connections</string>
     <string name="notification_pin_title">AirPlay PIN Required</string>
     <string name="notification_pin_text">PIN: %1$s</string>
+    <string name="notification_alerts_channel">AirPlay Connection Alerts</string>
+    <string name="notification_launch_title">AirPlay client connected</string>
+    <string name="notification_launch_text">Tap to open player. Grant overlay permission to auto-open.</string>
+    <string name="notification_launch_action_overlay">Grant permission</string>
     <string name="stop_service">Stop</string>
 
     <!-- Tabs -->

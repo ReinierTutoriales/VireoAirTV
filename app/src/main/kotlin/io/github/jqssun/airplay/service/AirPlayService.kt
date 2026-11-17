@@ -18,6 +18,7 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -25,6 +26,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -1133,12 +1135,21 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notification_channel),
-            NotificationManager.IMPORTANCE_LOW
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.notification_channel),
+                NotificationManager.IMPORTANCE_LOW
+            )
         )
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ALERTS_ID,
+                getString(R.string.notification_alerts_channel),
+                NotificationManager.IMPORTANCE_HIGH
+            )
+        )
     }
 
     private fun buildNotification(): Notification {
@@ -1200,12 +1211,54 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         Handler(Looper.getMainLooper()).post {
             val launchIntent = Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !Settings.canDrawOverlays(this)) {
+                log("Overlay permission missing; posting launch notification")
+                _notifyLaunchFallback(launchIntent, includeOverlayAction = true)
+                return@post
+            }
             try {
                 startActivity(launchIntent)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to launch activity", e)
+                _notifyLaunchFallback(launchIntent, includeOverlayAction = false)
             }
         }
+    }
+
+    private fun _notifyLaunchFallback(launchIntent: Intent, includeOverlayAction: Boolean) {
+        val openPi = PendingIntent.getActivity(
+            this,
+            NOTIFICATION_LAUNCH_ID,
+            launchIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val builder = NotificationCompat.Builder(this, CHANNEL_ALERTS_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(getString(R.string.notification_launch_title))
+            .setContentText(getString(R.string.notification_launch_text))
+            .setContentIntent(openPi)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+        if (includeOverlayAction && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val overlayIntent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.fromParts("package", packageName, null)
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val overlayPi = PendingIntent.getActivity(
+                this,
+                NOTIFICATION_LAUNCH_ID + 1,
+                overlayIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            builder.addAction(
+                android.R.drawable.ic_menu_preferences,
+                getString(R.string.notification_launch_action_overlay),
+                overlayPi
+            )
+        }
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_LAUNCH_ID, builder.build())
     }
 
     private fun _mediaAction(action: String): PendingIntent {
@@ -1236,7 +1289,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val CLIENT_VOL_MAX_STEPS = 32
         private const val CLIENT_VOL_TIMEOUT_MS = 800L
         private const val CHANNEL_ID = "airplay_service"
+        private const val CHANNEL_ALERTS_ID = "airplay_alerts"
         private const val NOTIFICATION_ID = 1
+        private const val NOTIFICATION_LAUNCH_ID = 2
         const val ACTION_PLAY_PAUSE = "io.github.jqssun.airplay.PLAY_PAUSE"
         const val ACTION_NEXT = "io.github.jqssun.airplay.NEXT"
         const val ACTION_PREV = "io.github.jqssun.airplay.PREV"
