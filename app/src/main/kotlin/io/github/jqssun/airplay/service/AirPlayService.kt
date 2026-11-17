@@ -394,6 +394,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
         // null intent: the system restarted this sticky service after killing the process
         if (intent == null || intent.action == ACTION_START_SERVER) {
             try {

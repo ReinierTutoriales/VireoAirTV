@@ -28,6 +28,7 @@ data class PlaybackSnapshot(
 )
 
 // exoplayer calls stay on the main thread; native only reads the onPlaybackInfo snapshot
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class AirPlayVideoPlayer(private val context: Context) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -90,7 +91,6 @@ class AirPlayVideoPlayer(private val context: Context) {
     }
 
     // coalesces the seek spam from drag-seeking
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun setScrubbing(enabled: Boolean) = mainHandler.post {
         player?.isScrubbingModeEnabled = enabled
     }
