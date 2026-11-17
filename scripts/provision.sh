@@ -31,11 +31,17 @@ run_adb shell dumpsys deviceidle whitelist "+$PACKAGE_NAME"
 set_setting() {
   local key="$1"
   local value="$2"
-  run_adb shell am broadcast \
+  local out
+  out=$(run_adb shell am broadcast \
     -a io.github.jqssun.airplay.SET_SETTING \
-    -n "$PACKAGE_NAME/.SettingsReceiver" \
+    -n "$PACKAGE_NAME/io.github.jqssun.airplay.SettingsReceiver" \
     --es key "$key" \
-    --es value "$value"
+    --es value "$value")
+  if [[ "$out" != *"result=-1"* ]]; then
+    echo "Error: SettingsReceiver rejected $key=$value:" >&2
+    echo "$out" >&2
+    exit 1
+  fi
 }
 
 set_setting auto_start true
