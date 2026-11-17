@@ -17,6 +17,7 @@ import io.github.jqssun.airplay.observe
 import io.github.jqssun.airplay.service.AirPlayService
 import io.github.jqssun.airplay.service.AirPlayService.ServerState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
 import java.text.SimpleDateFormat
@@ -197,6 +199,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
     private val _logLock = Any()
     private val _logList = mutableListOf<String>()
+    private var _persistLogsJob: Job? = null
     private val _dateFmt = object : ThreadLocal<SimpleDateFormat>() {
         override fun initialValue() = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
     }
@@ -210,51 +213,68 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         val snapshot: List<String>
         synchronized(_logLock) {
             _logList.add(line)
-            while (_logList.size > 9999) _logList.removeAt(0)
-            persistLogsLocked()
+            while (_logList.size > MAX_LOG_LINES) _logList.removeAt(0)
             snapshot = _logList.toList()
         }
         _logs.value = snapshot
+        schedulePersistLogs()
     }
 
     fun clearLogs() {
+        _persistLogsJob?.cancel()
         synchronized(_logLock) {
             _logList.clear()
-            runCatching { logFile.delete() }
         }
         _logs.value = emptyList()
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { logFile.delete() }
+        }
     }
 
     fun exportLogs() {
-        val ctx = getApplication<Application>()
-        val file = File(ctx.cacheDir, "airplay_logs.txt")
-        file.writeText(_logList.joinToString("\n"))
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        val snapshot = synchronized(_logLock) { _logList.toList() }
+        viewModelScope.launch(Dispatchers.IO) {
+            val ctx = getApplication<Application>()
+            val file = File(ctx.cacheDir, "airplay_logs.txt")
+            file.writeText(snapshot.joinToString("\n"))
+            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooserTitle = ctx.getString(io.github.jqssun.airplay.R.string.export_logs_chooser_title)
+            withContext(Dispatchers.Main) {
+                ctx.startActivity(Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
         }
-        val chooserTitle = ctx.getString(io.github.jqssun.airplay.R.string.export_logs_chooser_title)
-        ctx.startActivity(Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun loadPersistedLogs() {
-        val snapshot: List<String>
-        synchronized(_logLock) {
+        viewModelScope.launch(Dispatchers.IO) {
             val restored = runCatching {
-                if (logFile.exists()) logFile.readLines().takeLast(9999) else emptyList()
+                if (logFile.exists()) logFile.readLines().takeLast(MAX_LOG_LINES) else emptyList()
             }.getOrDefault(emptyList())
-            _logList.clear()
-            _logList.addAll(restored)
-            snapshot = _logList.toList()
+            if (restored.isEmpty()) return@launch
+            val snapshot: List<String>
+            synchronized(_logLock) {
+                val merged = (restored + _logList).takeLast(MAX_LOG_LINES)
+                _logList.clear()
+                _logList.addAll(merged)
+                snapshot = _logList.toList()
+            }
+            _logs.value = snapshot
         }
-        _logs.value = snapshot
     }
 
-    private fun persistLogsLocked() {
-        runCatching {
-            logFile.writeText(_logList.joinToString("\n"))
+    private fun schedulePersistLogs() {
+        _persistLogsJob?.cancel()
+        _persistLogsJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(LOG_PERSIST_DEBOUNCE_MS)
+            val snapshot = synchronized(_logLock) { _logList.toList() }
+            runCatching {
+                logFile.writeText(snapshot.joinToString("\n"))
+            }
         }
     }
 
@@ -437,5 +457,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         const val SCRUB_SETTLE_TIMEOUT_MS = 3_000L
         // raise if the play/pause icon flickers back right after a local toggle
         const val VIDEO_ACTION_SYNC_HOLD_MS = 700L
+        const val MAX_LOG_LINES = 9999
+        const val LOG_PERSIST_DEBOUNCE_MS = 1_500L
     }
 }
