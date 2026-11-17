@@ -680,6 +680,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         log(message)
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onDestroy() {
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
         stopServer()
