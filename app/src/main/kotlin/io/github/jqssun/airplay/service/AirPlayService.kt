@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.service
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -1210,6 +1211,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private fun launchMainActivity() {
         Handler(Looper.getMainLooper()).post {
+            if (_isAppInForeground()) return@post
             val launchIntent = Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !Settings.canDrawOverlays(this)) {
@@ -1223,6 +1225,15 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 Log.w(TAG, "Failed to launch activity", e)
                 _notifyLaunchFallback(launchIntent, includeOverlayAction = false)
             }
+        }
+    }
+
+    private fun _isAppInForeground(): Boolean {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+        val appProcesses = am.runningAppProcesses ?: return false
+        return appProcesses.any {
+            it.processName == packageName &&
+                it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
         }
     }
 
