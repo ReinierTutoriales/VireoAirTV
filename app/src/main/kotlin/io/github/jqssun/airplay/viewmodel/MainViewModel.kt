@@ -19,6 +19,7 @@ import io.github.jqssun.airplay.service.AirPlayService.ServerState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -199,13 +200,14 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
     private val _logLock = Any()
     private val _logList = mutableListOf<String>()
-    private var _persistLogsJob: Job? = null
+    private val _persistTrigger = Channel<Unit>(Channel.CONFLATED)
     private val _dateFmt = object : ThreadLocal<SimpleDateFormat>() {
         override fun initialValue() = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
     }
 
     init {
         loadPersistedLogs()
+        startLogPersistenceLoop()
     }
 
     fun addLog(msg: String) {
@@ -217,11 +219,10 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             snapshot = _logList.toList()
         }
         _logs.value = snapshot
-        schedulePersistLogs()
+        _persistTrigger.trySend(Unit)
     }
 
     fun clearLogs() {
-        _persistLogsJob?.cancel()
         synchronized(_logLock) {
             _logList.clear()
         }
@@ -267,13 +268,17 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         }
     }
 
-    private fun schedulePersistLogs() {
-        _persistLogsJob?.cancel()
-        _persistLogsJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(LOG_PERSIST_DEBOUNCE_MS)
-            val snapshot = synchronized(_logLock) { _logList.toList() }
-            runCatching {
-                logFile.writeText(snapshot.joinToString("\n"))
+    private fun startLogPersistenceLoop() {
+        viewModelScope.launch(Dispatchers.IO) {
+            for (ignored in _persistTrigger) {
+                delay(LOG_PERSIST_INTERVAL_MS)
+                _persistTrigger.tryReceive()
+                val snapshot = synchronized(_logLock) { _logList.toList() }
+                if (snapshot.isNotEmpty()) {
+                    runCatching {
+                        logFile.writeText(snapshot.joinToString("\n"))
+                    }
+                }
             }
         }
     }
@@ -524,6 +529,6 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         // raise if the play/pause icon flickers back right after a local toggle
         const val VIDEO_ACTION_SYNC_HOLD_MS = 700L
         const val MAX_LOG_LINES = 9999
-        const val LOG_PERSIST_DEBOUNCE_MS = 1_500L
+        const val LOG_PERSIST_INTERVAL_MS = 1_500L
     }
 }
