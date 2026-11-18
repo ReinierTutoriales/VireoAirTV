@@ -13,8 +13,9 @@ AirPlay receiver for Android TV, independent of the VireoLumaTV browser. Derived
 git submodule update --init --recursive
 ./gradlew assembleDebug testDebugUnitTest lintDebug   # add -PabiFilter=arm64-v8a for a one-ABI debug build
 ./gradlew assembleSanitize                            # HWASan + UBSan, arm64
+./scripts/native-regress.sh                           # host ASan/UBSan tests of patched native code (after a build)
 ```
-The `applyUxplayPatches` task applies `app/src/main/cpp/patches/UxPlay/*.patch` before CMake configure. Unit tests (JUnit 6) live in `app/src/test/`. CI (`build.yml`) runs build, tests and lint on every PR and push to `main`; lint must stay at 0 errors.
+The `applyUxplayPatches` task applies `app/src/main/cpp/patches/{UxPlay,libplist}/*.patch` before CMake configure. Unit tests (JUnit 6) live in `app/src/test/`. CI (`build.yml`) runs build, tests and lint on every PR and push to `main`; lint must stay at 0 errors.
 
 ## Priorities
 - Stable, recoverable receiver on Android TV/Google TV: discovery, sessions, mirroring, audio and HLS video.
@@ -23,7 +24,7 @@ The `applyUxplayPatches` task applies `app/src/main/cpp/patches/UxPlay/*.patch` 
 - Keep GPL-3.0 obligations and upstream credits.
 
 ## Skills
-Read only the relevant `.agents/skills/` instructions: `agent-governance` before Git mutations, `precise-coding` for implementation, `testing-discipline` for functional changes, `code-quality` for refactors and reviews, `tv-ui` for focus/layout/overlay work. Use `no-ai-slop` (third-party, MIT; see NOTICE.md) for prose only: documentation, commit and PR text; it never overrides the verification rules here. Claude Code loads `no-ai-slop` through the `.claude/skills/no-ai-slop` symlink.
+Read only the relevant `.agents/skills/` instructions: `agent-governance` before Git mutations, `precise-coding` for implementation, `testing-discipline` for functional changes, `code-quality` for refactors and reviews, `tv-ui` for focus/layout/overlay work, `upstream-port` for auditing and porting upstream fixes and vulnerabilities. Use `no-ai-slop` (third-party, MIT; see NOTICE.md) for prose only: documentation, commit and PR text; it never overrides the verification rules here. Claude Code loads `no-ai-slop` through the `.claude/skills/no-ai-slop` symlink.
 
 ## Method
 1. Record base SHA, reproducible failure, expected behavior and consumers of the code being changed.
