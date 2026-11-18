@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
     private var service: AirPlayService? = null
     val isInPip = mutableStateOf(false)
     // brought up by the service for a mirroring/video session: give the screen back when it ends
-    private var autoLaunched = false
+    private val autoLaunched = mutableStateOf(false)
     private var sawVisual = false
     private val logCallback: (String) -> Unit = { viewModel.addLog(it) }
     private val pinCallback: (String?) -> Unit = { viewModel.showPin(it) }
@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) autoLaunched = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
+        if (savedInstanceState == null) autoLaunched.value = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
 
         val missing = buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !_granted(Manifest.permission.POST_NOTIFICATIONS)) {
@@ -116,11 +116,11 @@ class MainActivity : ComponentActivity() {
                 _visualSession().distinctUntilChanged().collectLatest { visible ->
                     if (visible) { sawVisual = true; return@collectLatest }
                     // only after a picture was shown: the service binding starts out all false
-                    if (!autoLaunched || !sawVisual || isInPip.value) return@collectLatest
+                    if (!autoLaunched.value || !sawVisual || isInPip.value) return@collectLatest
                     delay(RETURN_DELAY_MS)
-                    autoLaunched = false
                     sawVisual = false
                     moveTaskToBack(true)
+                    autoLaunched.value = false
                 }
             }
         }
@@ -146,7 +146,9 @@ class MainActivity : ComponentActivity() {
                     onSurfaceAvailable = { viewModel.onSurfaceAvailable(it) },
                     onSurfaceDestroyed = { viewModel.onSurfaceDestroyed(it) },
                     onPip = { enterPip() },
-                    onLocalNetwork = ::_requestLocalNetwork
+                    onLocalNetwork = ::_requestLocalNetwork,
+                    receiverOnly = autoLaunched.value,
+                    onLeaveReceiverOnly = { autoLaunched.value = false }
                 )
             }
         }
@@ -229,7 +231,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         // launcher or notification taps from the user keep the app open after the session
-        autoLaunched = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
+        autoLaunched.value = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
     }
 
     override fun onUserLeaveHint() {
@@ -262,6 +264,6 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val RETURN_DELAY_MS = 2_000L
+        private const val RETURN_DELAY_MS = 1_500L
     }
 }

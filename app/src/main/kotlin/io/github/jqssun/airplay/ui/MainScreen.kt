@@ -106,7 +106,10 @@ fun MainScreen(
     onSurfaceAvailable: (android.view.Surface) -> Unit,
     onSurfaceDestroyed: (android.view.Surface) -> Unit,
     onPip: () -> Unit = {},
-    onLocalNetwork: () -> Unit = {}
+    onLocalNetwork: () -> Unit = {},
+    // brought up for a session (Apple TV style): only the sender's picture, never the app screens
+    receiverOnly: Boolean = false,
+    onLeaveReceiverOnly: () -> Unit = {}
 ) {
     var tab by remember { mutableStateOf(Tab.OVERVIEW) }
     var fullscreen by remember { mutableStateOf(false) }
@@ -160,7 +163,7 @@ fun MainScreen(
     LaunchedEffect(fullscreen, videoScreen) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        if (fullscreen || videoScreen) {
+        if (fullscreen || videoScreen || receiverOnly) {
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
@@ -532,7 +535,22 @@ fun MainScreen(
         if (pin != null) fullscreen = false
     }
 
-    if (fullscreen) {
+    if (receiverOnly) {
+        // Back hands over to the regular app screens, as leaving fullscreen does
+        BackHandler { onLeaveReceiverOnly() }
+        if (mirroringActive) {
+            FullscreenVideo(
+                viewModel = viewModel,
+                video = video,
+                onExitFullscreen = onLeaveReceiverOnly,
+                onPip = onPip,
+                quiet = true
+            )
+        } else {
+            // between pictures (and before returning to the previous app) hold black, not the app
+            Box(Modifier.fillMaxSize().background(Color.Black))
+        }
+    } else if (fullscreen) {
         BackHandler { fullscreen = false }
         FullscreenVideo(
             viewModel = viewModel,
@@ -800,15 +818,18 @@ private fun FullscreenVideo(
     viewModel: MainViewModel,
     video: @Composable () -> Unit,
     onExitFullscreen: () -> Unit,
-    onPip: () -> Unit
+    onPip: () -> Unit,
+    // nothing over the picture until the user asks for it (a tap or key)
+    quiet: Boolean = false
 ) {
     val videoResolution by viewModel.videoResolution.collectAsState()
     val debugEnabled by viewModel.pref(Prefs.DEBUG_ENABLED).collectAsState()
     val debugInfo by viewModel.debugInfo.collectAsState()
 
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsVisible by remember { mutableStateOf(!quiet) }
     var tapTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(tapTick) {
+        if (quiet && tapTick == 0) return@LaunchedEffect
         controlsVisible = true
         delay(8000)
         controlsVisible = false
@@ -846,7 +867,7 @@ private fun FullscreenVideo(
         }
         var showRes by remember { mutableStateOf(false) }
         LaunchedEffect(videoResolution) {
-            if (videoResolution.isNotEmpty()) {
+            if (videoResolution.isNotEmpty() && (!quiet || debugEnabled)) {
                 showRes = true
                 delay(5000)
                 showRes = false
