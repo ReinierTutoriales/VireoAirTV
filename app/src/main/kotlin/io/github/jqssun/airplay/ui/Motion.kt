@@ -2,30 +2,41 @@ package io.github.jqssun.airplay.ui
 
 import android.graphics.Bitmap
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.scale
+import kotlinx.coroutines.delay
 
 // one curve and a few durations for every transition, so screens move alike
 object Motion {
@@ -98,3 +109,34 @@ fun ArtworkBackdrop(coverArt: Bitmap?, modifier: Modifier = Modifier) {
 }
 
 private const val BACKDROP_PX = 24
+
+/**
+ * tvOS-like acknowledgement of a remote command: a small translucent disc with the action's icon
+ * that blooms in and fades out. Shown only for commands that were actually sent.
+ */
+@Composable
+fun CommandFeedback(icon: ImageVector?, tick: Int, modifier: Modifier = Modifier) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(tick) {
+        if (tick == 0 || icon == null) return@LaunchedEffect
+        visible = true
+        delay(FEEDBACK_HOLD_MS)
+        visible = false
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(Motion.SHORT_MS, easing = Motion.Ease)) +
+            scaleIn(tween(Motion.SHORT_MS, easing = Motion.Ease), initialScale = 0.85f),
+        exit = fadeOut(tween(Motion.MEDIUM_MS, easing = Motion.Ease)),
+        modifier = modifier
+    ) {
+        Box(
+            Modifier.size(88.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (icon != null) Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(44.dp))
+        }
+    }
+}
+
+private const val FEEDBACK_HOLD_MS = 650L

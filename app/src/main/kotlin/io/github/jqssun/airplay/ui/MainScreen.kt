@@ -26,6 +26,10 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.BrightnessHigh
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.*
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.*
@@ -44,7 +48,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -89,6 +97,7 @@ import io.github.jqssun.airplay.ui.gestures.ZoomState
 import io.github.jqssun.airplay.viewmodel.DebugInfo
 import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
 import io.github.jqssun.airplay.viewmodel.MainViewModel
+import io.github.jqssun.airplay.viewmodel.SenderCommand
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -835,14 +844,48 @@ private fun FullscreenVideo(
         controlsVisible = false
     }
 
+    // the remote drives the sender's Now Playing app over DACP; with no buttons on screen the
+    // center key is play/pause too
+    var feedbackIcon by remember { mutableStateOf<ImageVector?>(null) }
+    var feedbackTick by remember { mutableIntStateOf(0) }
+    // DACP reports no play state while mirroring: a toggle assumes the sender was playing
+    var assumedPlaying by remember { mutableStateOf(true) }
+    fun send(command: SenderCommand, icon: ImageVector): Boolean {
+        if (!viewModel.senderCommand(command)) return false
+        feedbackIcon = icon
+        feedbackTick++
+        return true
+    }
+    fun toggle(): Boolean {
+        val icon = if (assumedPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
+        return send(SenderCommand.PLAY_PAUSE, icon).also { if (it) assumedPlaying = !assumedPlaying }
+    }
+    val focus = remember { FocusRequester() }
+    if (quiet) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) { detectTapGestures { tapTick++ } },
+            .pointerInput(Unit) { detectTapGestures { tapTick++ } }
+            .onPreviewKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (e.key) {
+                    Key.MediaPlayPause -> toggle()
+                    Key.MediaPlay -> send(SenderCommand.PLAY, Icons.Rounded.PlayArrow).also { if (it) assumedPlaying = true }
+                    Key.MediaPause -> send(SenderCommand.PAUSE, Icons.Rounded.Pause).also { if (it) assumedPlaying = false }
+                    Key.MediaNext -> send(SenderCommand.NEXT, Icons.Rounded.SkipNext)
+                    Key.MediaPrevious -> send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious)
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter ->
+                        quiet && !controlsVisible && toggle()
+                    else -> false
+                }
+            }
+            .then(if (quiet) Modifier.focusRequester(focus).focusable() else Modifier),
         contentAlignment = Alignment.Center
     ) {
         video()
+        CommandFeedback(feedbackIcon, feedbackTick)
         androidx.compose.animation.AnimatedVisibility(
             visible = controlsVisible,
             modifier = Modifier.align(Alignment.TopEnd)

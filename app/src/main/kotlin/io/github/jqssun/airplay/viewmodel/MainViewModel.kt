@@ -94,6 +94,22 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     }
     fun audioScanEnd() { service?.dacpController?.playResume() }
 
+    /**
+     * Media command for the sender's Now Playing app over DACP (works while mirroring too, when the
+     * sender sent its DACP-ID). Returns false when no DACP endpoint is known, so callers show nothing.
+     */
+    fun senderCommand(command: SenderCommand): Boolean {
+        val dacp = service?.dacpController?.takeIf { it.ready } ?: return false
+        when (command) {
+            SenderCommand.PLAY_PAUSE -> dacp.playPause()
+            SenderCommand.PLAY -> dacp.play()
+            SenderCommand.PAUSE -> dacp.pause()
+            SenderCommand.NEXT -> dacp.nextItem()
+            SenderCommand.PREVIOUS -> dacp.prevItem()
+        }
+        return true
+    }
+
     private val _clientVolume = MutableStateFlow(1f)
     val clientVolume: StateFlow<Float> = _clientVolume.asStateFlow()
     private val _clientVolumeAdjustable = MutableStateFlow(false)
@@ -544,3 +560,5 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         const val LOG_PERSIST_INTERVAL_MS = 1_500L
     }
 }
+
+enum class SenderCommand { PLAY_PAUSE, PLAY, PAUSE, NEXT, PREVIOUS }

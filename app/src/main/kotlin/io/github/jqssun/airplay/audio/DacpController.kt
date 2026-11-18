@@ -40,6 +40,7 @@ class DacpController(ctx: Context) {
 
     fun play() = _send("/ctrl-int/1/play")
     fun pause() = _send("/ctrl-int/1/pause")
+    fun playPause() = _send("/ctrl-int/1/playpause")
     fun nextItem() = _send("/ctrl-int/1/nextitem")
     fun prevItem() = _send("/ctrl-int/1/previtem")
     fun volumeUp() = _send("/ctrl-int/1/volumeup")
