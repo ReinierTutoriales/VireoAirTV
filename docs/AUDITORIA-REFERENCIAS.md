@@ -180,6 +180,23 @@ Pendiente, con motivo:
 - jqssun #73 (TikTok), #44 (`ANNOUNCE` de PipeWire), #42 (Music Assistant/TuneBlade), #61 (perfil de
   color), #90 (confirmar conexiones), #93 (límite de 8 Mbit/s de macOS, ajuste del emisor), #26, #65, #83.
 
+## Octava pasada: revisión de errores (2026-11-18, rama `develop`)
+Revisión del diff `main..develop` y análisis estático (cppcheck 2.22) del código nativo.
+- Parche 0059, grave: el emparejamiento por PIN se podía saltar. El paso 3 de `pair-setup-pin` se aceptaba
+  sin el paso 2 (la prueba del PIN), cifrando con la clave derivada de la clave de sesión a ceros que deja
+  el paso 1; la clave del atacante quedaba registrada como cliente de confianza. Ahora el paso 3 exige la
+  prueba verificada.
+- Parche 0057: un `pair-setup-pin` con prueba sin el primer paso, o con A = 0 mod N, desreferenciaba NULL;
+  cualquier equipo de la LAN tumbaba el receptor antes de emparejar, con o sin PIN.
+- Parche 0058: fugas de memoria en los caminos de error de `srp_verifier_new()`.
+- Las tres están también en UxPlay master. Test `srp_pair_setup.c`; el paso 3 forjado pasa con el
+  código sin parchear. Emparejamiento por PIN real: pendiente de validación física.
+- `VideoRenderer`: si el hilo `VideoDrain` termina con el códec activo, el decodificador se reinicia en
+  el siguiente keyframe en vez de quedarse congelado.
+- `_localPauseAt` ahora es `@Volatile` (se lee en hilos nativos).
+- Audio: un FLUSH pendiente se descarta cuando la salida se reinicia con el buffer ya vacío.
+- Restos de cppcheck sin efecto práctico: tipos de `printf`, comprobaciones de `malloc` en `srp.c` y `utils.c`.
+
 ## Dependencias (comprobado 2026-11-18 contra Google Maven, Maven Central y los repositorios oficiales)
 Al día con la última versión estable: AGP 9.5.1, Gradle 9.9.1, Kotlin 2.4.21, KSP 2.3.14, Compose BOM
 2026.09.00, Hilt 2.60.1, hilt-navigation 1.4.0, lifecycle 2.11.0, activity 1.13.0, core-ktx 1.19.1,
