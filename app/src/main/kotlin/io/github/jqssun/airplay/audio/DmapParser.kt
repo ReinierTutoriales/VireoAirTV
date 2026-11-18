@@ -24,7 +24,12 @@ object DmapParser {
     // tags that are containers (contain nested dmap items)
     private val CONTAINER_TAGS = setOf("mlit", "mcon", "mlcl")
 
-    fun parse(data: ByteArray): Map<String, Any> {
+    // real DMAP nests 2-3 levels; the bound keeps hostile input from exhausting the stack
+    private const val MAX_DEPTH = 8
+
+    fun parse(data: ByteArray): Map<String, Any> = _parse(data, 0)
+
+    private fun _parse(data: ByteArray, depth: Int): Map<String, Any> {
         val result = mutableMapOf<String, Any>()
         val buf = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
         while (buf.remaining() >= 8) {
@@ -36,7 +41,7 @@ object DmapParser {
             val payload = ByteArray(len)
             buf.get(payload)
             result[tag] = when {
-                tag in CONTAINER_TAGS -> parse(payload)
+                tag in CONTAINER_TAGS -> if (depth < MAX_DEPTH) _parse(payload, depth + 1) else emptyMap<String, Any>()
                 tag in INT_TAGS -> _readInt(payload)
                 else -> String(payload, Charsets.UTF_8)
             }

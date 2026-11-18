@@ -90,6 +90,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests.all { it.useJUnitPlatform() }
+    }
+
+    lint {
+        // x86_64 is in allAbis; the check cannot evaluate the variable lists and the sanitize type is arm64-only by design
+        disable += "ChromeOsAbiSupport"
+    }
+
     buildFeatures {
         compose = true
         prefab = true
@@ -143,4 +152,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
