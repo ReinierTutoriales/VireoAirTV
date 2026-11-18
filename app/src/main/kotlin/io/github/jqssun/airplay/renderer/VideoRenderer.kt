@@ -159,6 +159,8 @@ class VideoRenderer(ctx: Context) {
 
     private fun _feedToCodec(data: ByteArray, ntpTimeNs: Long) {
         val c = codec ?: return
+        // without the drain thread no frame leaves the decoder; reset it (feedFrame restarts at a keyframe)
+        if (_drainThread?.isAlive == false) throw IllegalStateException("decoder output thread stopped")
         // dropping a frame desyncs decoder until the next keyframe, but source would only send one on (re)connect
         val retries = if (firstFrameQueued) FEED_RETRIES else FIRST_FEED_RETRIES
         repeat(retries) {
