@@ -1,0 +1,65 @@
+From 3b0b5c9066427730053dbcabcf9abd9bec9c09a0 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Fri, 2 Oct 2026 02:58:13 -0400
+Subject: [PATCH 38/43] add sync_delay to raop_ntp, plus helper to fetch delay
+ and offset
+
+(cherry picked from commit 4c6e017971aee5665dcb9727d1484c6b9799d188)
+---
+ lib/raop_ntp.c | 15 +++++++++++++++
+ lib/raop_ntp.h |  2 +-
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/lib/raop_ntp.c b/lib/raop_ntp.c
+index 892de9c..bb4f630 100644
+--- a/lib/raop_ntp.c
++++ b/lib/raop_ntp.c
+@@ -77,6 +77,7 @@ struct raop_ntp_s {
+     mutex_handle_t sync_params_mutex;
+     int64_t sync_offset;
+     bool is_synced;
++    double sync_delay;
+     uint64_t root_distance; 
+     bool kernel_timestamp_inconsistency_detected;
+     uint64_t last_detection_time;
+@@ -823,6 +824,7 @@ raop_ntp_thread(void *arg) {
+                         raop_ntp->is_synced = is_synced;
+                         raop_ntp->sync_offset = sync_offset;
+                         raop_ntp->root_distance = root_distance_nsec;
++                        raop_ntp->sync_delay = data_sorted[0].delay;
+                         MUTEX_UNLOCK(raop_ntp->sync_params_mutex);
+                         have_offset = true;
+                         logger_log(raop_ntp->logger, LOGGER_DEBUG, "current client NTP offset (secs) = %9.6f, root_distance (secs) = %8.6f, is_synced = %s\n",
+@@ -935,6 +937,19 @@ raop_ntp_stop(raop_ntp_t *raop_ntp)
+     MUTEX_UNLOCK(raop_ntp->run_mutex);
+ }
+ 
++void raop_ntp_get_sync_params(raop_ntp_t *raop_ntp, int64_t *offset_ns, double *delay_sec) {
++    if (!raop_ntp) return;
++
++    MUTEX_LOCK(raop_ntp->sync_params_mutex);
++    if (offset_ns) {
++        *offset_ns = raop_ntp->sync_offset;
++    }
++    if (delay_sec) {
++        *delay_sec = raop_ntp->sync_delay;
++    }
++    MUTEX_UNLOCK(raop_ntp->sync_params_mutex);
++}
++
+ /**
+  * Converts from a little endian ntp timestamp to nano seconds since the Unix epoch.
+  * Does the same thing as byteutils_get_ntp_timestamp, except its input is an uint64_t
+diff --git a/lib/raop_ntp.h b/lib/raop_ntp.h
+index 946aff6..eef5378 100644
+--- a/lib/raop_ntp.h
++++ b/lib/raop_ntp.h
+@@ -67,7 +67,7 @@ uint64_t raop_ntp_get_local_time();
+ uint64_t raop_ntp_get_remote_time(raop_ntp_t *raop_ntp);
+ uint64_t raop_ntp_convert_remote_time(raop_ntp_t *raop_ntp, uint64_t remote_time);
+ uint64_t raop_ntp_convert_local_time(raop_ntp_t *raop_ntp, uint64_t local_time);
+-
++void raop_ntp_get_sync_params(raop_ntp_t *raop_ntp, int64_t *offset_ns, double *delay_sec);
+ void  raop_ntp_set_video_arrival_offset(raop_ntp_t* raop_ntp, const uint64_t *offset);
+ uint64_t raop_ntp_get_video_arrival_offset(raop_ntp_t* raop_ntp);
+ 
