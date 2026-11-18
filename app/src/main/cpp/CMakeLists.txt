@@ -12,6 +12,9 @@ set(UXPLAY_LIB third_party/UxPlay/lib)
 # ---------- OpenSSL (built from source via openssl-cmake) ----------
 set(BUILD_OPENSSL ON CACHE BOOL "" FORCE)
 set(OPENSSL_BUILD_VERSION "4.1.0" CACHE STRING "" FORCE)
+# openssl-cmake downloads from a third-party mirror; pin the official release digest
+# (github.com/openssl/openssl/releases/download/openssl-4.1.0/openssl-4.1.0.tar.gz.sha256)
+set(OPENSSL_BUILD_HASH "50c17baf54cb008f6ce42d50deb4b28050a1aad711636cabd4b241c7e90cc2fd" CACHE STRING "" FORCE)
 set(CROSS_ANDROID ON CACHE BOOL "" FORCE)
 string(REGEX MATCH "[0-9]+" AIRPLAY_ANDROID_API "${ANDROID_PLATFORM}")
 set(OPENSSL_PARAMS "-D__ANDROID_API__=${AIRPLAY_ANDROID_API}" CACHE STRING "" FORCE)
