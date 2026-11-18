@@ -15,6 +15,10 @@ flags=(-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all)
     "$ux/http_request.c" "$ux"/llhttp/*.c -o "$out/http_request_limits"
 "$out/http_request_limits"
 
+"$cc" "${flags[@]}" -I"$ux" -I"$ux/playfair" app/src/test/native/fairplay_setup_mode.c \
+    "$ux/fairplay_playfair.c" "$ux"/playfair/*.c "$ux/logger.c" -lpthread -lm -o "$out/fairplay_setup_mode"
+"$out/fairplay_setup_mode"
+
 "$cc" "${flags[@]}" -D_GNU_SOURCE -DHAVE_STRNDUP -DPACKAGE_VERSION='"2.8.1"' \
     -I"$out" -I"$pl/include" -I"$pl/src" -I"$pl/libcnary/include" \
     app/src/test/native/bplist_expansion.c "$pl"/src/*.c \
