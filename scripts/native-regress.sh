@@ -19,6 +19,10 @@ flags=(-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all)
     "$ux/airplay_video.c" "$ux/logger.c" -lpthread -o "$out/hls_master_playlist"
 "$out/hls_master_playlist"
 
+"$cc" "${flags[@]}" -I"$ux" app/src/test/native/srp_pair_setup.c "$ux/pairing.c" "$ux/srp.c" "$ux/crypto.c" \
+    "$ux/utils.c" "$ux/logger.c" -lcrypto -lpthread -o "$out/srp_pair_setup"
+"$out/srp_pair_setup"
+
 c++ "${flags[@]}" -std=c++17 -I"$cpp" app/src/test/native/timeline_flush.cpp -o "$out/timeline_flush"
 "$out/timeline_flush"
 

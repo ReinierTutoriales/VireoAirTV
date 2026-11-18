@@ -1,0 +1,53 @@
+From 39dfd611b2e727541c5388d9d646014cfcf43be9 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:35:18 -0500
+Subject: [PATCH] pairing: accept pair-setup-pin step 3 only after a verified
+ PIN proof
+
+srp_new_user() (step 1) allocates the SRP state with session_key all zeros; step 2 replaces it only when the client's proof shows it knows the PIN. srp_confirm_pair_setup() (step 3) did not check that step 2 had succeeded, so a client could skip it, encrypt its Ed25519 key under the AES key derived from the zero session key, and have it accepted: pair_setup became true and the following SETUP registered that key as a trusted client without the PIN. Step 3 now requires the proof flag set by a successful step 2. Also releases the verifier on the len_K error path. Same code in UxPlay master.
+---
+ lib/pairing.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/lib/pairing.c b/lib/pairing.c
+index 615efdf..2aff5b9 100644
+--- a/lib/pairing.c
++++ b/lib/pairing.c
+@@ -34,6 +34,7 @@ typedef struct srp_s {
+     unsigned char verifier[SRP_VERIFIER_SIZE];
+     unsigned char session_key[SRP_SESSION_KEY_SIZE];
+     unsigned char private_key[SRP_PRIVATE_KEY_SIZE];
++    bool proof_verified;   /* step 2 checked the client's PIN proof and set session_key */
+ } srp_t;
+ 
+ struct pairing_s {
+@@ -608,9 +609,13 @@ srp_validate_proof(pairing_session_t *session, pairing_t *pairing, const unsigne
+     }
+     session_key = srp_verifier_get_session_key(verifier, &len_K);
+     if (len_K != SRP_SESSION_KEY_SIZE) {
++        srp_verifier_delete(verifier);
++        free (session->srp);
++        session->srp = NULL;
+         return -2;
+     }
+     memcpy(session->srp->session_key, session_key, len_K);
++    session->srp->proof_verified = true;
+     memcpy(proof, M2, proof_len);
+     srp_verifier_delete(verifier);
+     return 0;
+@@ -621,6 +626,15 @@ srp_confirm_pair_setup(pairing_session_t *session, pairing_t *pairing,
+     unsigned char aesKey[16] = {0}, aesIV[16] = {0};
+     unsigned char hash[SHA512_DIGEST_LENGTH] = {0};
+     unsigned char pk[ED25519_KEY_SIZE] = {0};
++    /* only after step 2 verified the PIN proof: before it session_key is all zeros, a key anyone can
++       compute, so a client could skip the PIN and still get its key accepted */
++    if (!session->srp || !session->srp->proof_verified) {
++        if (session->srp) {
++            free(session->srp);
++            session->srp = NULL;
++        }
++        return -1;
++    }
+     /* decrypt client epk to get client pk, authenticate with auth_tag*/ 
+ 
+     const char *salt = "Pair-Setup-AES-Key";
