@@ -1,0 +1,35 @@
+From bd67f80cf36aca96bc82684e2248532d5d2d5670 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:48:05 -0500
+Subject: [PATCH 60/61] airplay_video: no read past a master playlist that ends
+ in m3u8
+
+create_media_uri_table() moved past each "m3u8" with sizeof("m3u8"), which counts the NUL. When the FCUP response ended right after the last URI, strstr() continued after the terminator (ASan heap-buffer-overflow, found by fuzzing). The URI copied is the same.
+---
+ lib/airplay_video.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/lib/airplay_video.c b/lib/airplay_video.c
+index c46c272..84b380c 100644
+--- a/lib/airplay_video.c
++++ b/lib/airplay_video.c
+@@ -787,7 +787,7 @@ int create_media_uri_table(const char *url_prefix, const char *master_playlist_d
+         if (end == NULL) {
+             return 1;
+         }
+-        end += sizeof("m3u8");
++        end += strlen("m3u8");   /* sizeof counted the NUL: at the end of the data it stepped past it */
+         count++;
+         ptr = strstr(end, url_prefix);
+     }
+@@ -806,8 +806,8 @@ int create_media_uri_table(const char *url_prefix, const char *master_playlist_d
+         if (end == NULL) {
+             return 0;
+         }
+-        end += sizeof("m3u8");
+-        size_t len = end - ptr - 1;
++        end += strlen("m3u8");
++        size_t len = end - ptr;
+ 	    uri  = (char *) calloc(len + 1, sizeof(char));
+         if (!uri) {
+             printf("Memory allocation failure (uri)\n");

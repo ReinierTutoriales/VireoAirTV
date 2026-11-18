@@ -1,0 +1,168 @@
+From 4af3077ea18732ed3bfd330f996839b0db768309 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:48:05 -0500
+Subject: [PATCH 61/61] airplay_video: grow the expanded YouTube playlist as it
+ is written
+
+adjust_yt_condensed_playlist() wrote into a buffer sized from a count of #EXTINF tags and the header fields, then trusted the playlist to match: an empty PREFIX, or prefixes out of step with the tags, wrote past it (ASan heap-buffer-overflow, found by fuzzing). The output now grows with each append, and an empty PREFIX leaves the playlist unexpanded. Valid condensed playlists expand to the same bytes as before.
+---
+ lib/airplay_video.c | 99 ++++++++++++++++++---------------------------
+ 1 file changed, 40 insertions(+), 59 deletions(-)
+
+diff --git a/lib/airplay_video.c b/lib/airplay_video.c
+index 84b380c..c12953c 100644
+--- a/lib/airplay_video.c
++++ b/lib/airplay_video.c
+@@ -954,49 +954,41 @@ char *adjust_yt_condensed_playlist(const char *media_playlist) {
+         }
+     }
+ 
+-    int count = 0;
+-    ptr = strstr(media_playlist, "#EXTINF");
+-    while (ptr) {
+-        count++;
+-        ptr = strstr(++ptr, "#EXTINF");
+-    }
+-
+-    size_t old_size = strlen(media_playlist);
+-    size_t new_len = old_size + (size_t) count * (base_uri_len + params_len + 2 * nparams + 2);
++    /* the output grows as needed: a precomputed size trusted the sender's playlist to match the
++       header, and a mismatch (empty PREFIX, prefixes out of order) wrote past the buffer */
++    struct { char *buf; size_t len, cap; } out = { NULL, 0, 0 };
++#define YT_APPEND(src, n) do {                                               \
++        size_t n_ = (size_t) (n);                                            \
++        if (out.len + n_ + 1 > out.cap) {                                    \
++            size_t cap_ = (out.len + n_ + 1) * 2;                            \
++            char *b_ = (char *) realloc(out.buf, cap_);                      \
++            if (!b_) { printf("Memory allocation failure (new_playlist)\n"); exit(1); } \
++            out.buf = b_; out.cap = cap_;                                    \
++        }                                                                    \
++        memcpy(out.buf + out.len, (src), n_);                                \
++        out.len += n_;                                                       \
++    } while (0)
+ 
+-    int byte_count = 0;
+-    char * new_playlist = (char *) malloc(new_len + 1);
+-    if (!new_playlist) {
+-        printf("Memory allocation failure (new_playlist)\n");
+-        exit(1);
+-    }
+-    new_playlist[new_len] = '\0';
+     const char *old_pos = media_playlist;
+-    char *new_pos = new_playlist;
+-    ptr = old_pos;
++    const char *tail_end = media_playlist + strlen(media_playlist);
+     ptr = strstr(old_pos, "#EXTINF:");
+-    size_t len = (ptr ? ptr : old_pos + strlen(old_pos)) - old_pos;
++    size_t len = (ptr ? ptr : tail_end) - old_pos;
+     /* copy header section before chunks */
+-    memcpy(new_pos, old_pos, len);
+-    byte_count += len;
++    YT_APPEND(old_pos, len);
+     old_pos += len;
+-    new_pos += len;
+-    while (ptr) {
++    /* an empty PREFIX matches everywhere and never advances */
++    while (ptr && prefix_len) {
+         /* for each chunk */
+         const char *end = NULL;
+         const char *start = strstr(ptr, prefix);
+         if (!start) break;
+-        len = start - ptr;
++        len = start - old_pos;
+         /* copy first line of chunk entry */
+-        memcpy(new_pos, old_pos, len);
+-        byte_count += len;
++        YT_APPEND(old_pos, len);
+         old_pos += len;
+-        new_pos += len;
+-	
+-	    /* copy base uri  to replace prefix*/
+-        memcpy(new_pos, base_uri, base_uri_len);
+-        byte_count += base_uri_len;
+-        new_pos += base_uri_len;
++
++        /* copy base uri  to replace prefix*/
++        YT_APPEND(base_uri, base_uri_len);
+         old_pos += prefix_len;
+         ptr = strstr(old_pos, "#EXTINF:");
+ 
+@@ -1007,26 +999,20 @@ char *adjust_yt_condensed_playlist(const char *media_playlist) {
+             if (i != last) {
+                 end = strchr(end, '/');
+             } else {
+-                /* the next line starts with either #EXTINF (usually) 
++                /* the next line starts with either #EXTINF (usually)
+                 or #EXT-X-ENDLIST (at last chunk)*/
+-	            end = strstr(end, "#EXT");
++                end = strstr(end, "#EXT");
+             }
+             if (!end) {
+                 if (i == last) {
+-                    end = old_pos + strlen(old_pos);
++                    end = tail_end;
+                 } else {
+                     goto stop_rewriting_chunks;
+                 }
+             }
+-            *new_pos = '/';
+-            byte_count++;
+-            new_pos++;
+-            memcpy(new_pos, params_start[i], params_size[i]);
+-            byte_count += params_size[i];
+-            new_pos += params_size[i];
+-            *new_pos = '/';
+-            byte_count++;
+-            new_pos++;
++            YT_APPEND("/", 1);
++            YT_APPEND(params_start[i], params_size[i]);
++            YT_APPEND("/", 1);
+ 
+             if (end < old_pos) {
+                 goto stop_rewriting_chunks;
+@@ -1034,11 +1020,9 @@ char *adjust_yt_condensed_playlist(const char *media_playlist) {
+             len = end - old_pos;
+             end++;
+ 
+-            memcpy (new_pos, old_pos, len);
+-            byte_count += len;
+-            new_pos += len;
++            YT_APPEND(old_pos, len);
+             old_pos += len;
+-            if (i != last) {
++            if (i != last && old_pos < tail_end) {
+                 old_pos++; /* last entry is not followed by "/" separator */
+             }
+         }
+@@ -1048,15 +1032,12 @@ char *adjust_yt_condensed_playlist(const char *media_playlist) {
+     }
+  stop_rewriting_chunks:
+     /* copy tail */
+-     
+-    len = media_playlist + strlen(media_playlist) - old_pos;
+-    memcpy(new_pos, old_pos, len);
+-    byte_count += len;
+-    new_pos += len;
+-    old_pos += len;
+-
+-    new_playlist[byte_count] = '\0';
+-    assert(byte_count <= (int) new_len);
++    if (old_pos < tail_end) {
++        YT_APPEND(old_pos, tail_end - old_pos);
++    }
++    YT_APPEND("", 0);
++    out.buf[out.len] = '\0';
++#undef YT_APPEND
+ 
+     free (prefix);
+     free (base_uri);
+@@ -1066,7 +1047,7 @@ char *adjust_yt_condensed_playlist(const char *media_playlist) {
+     }
+     if (params_start) {
+         free (params_start);
+-    }  
++    }
+ 
+-    return new_playlist;
++    return out.buf;
+ }
