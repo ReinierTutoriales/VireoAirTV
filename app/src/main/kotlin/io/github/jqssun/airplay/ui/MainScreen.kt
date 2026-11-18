@@ -110,10 +110,12 @@ fun MainScreen(
     // don't use movableContentOf: moving AndroidView across subcomposition boundaries makes it crash on reparent
     val video: @Composable () -> Unit = {
         val aspect by viewModel.videoAspect.collectAsState()
+        val mirrorSize by viewModel.mirrorSize.collectAsState()
         VideoSurfaceView(
             onSurfaceAvailable = onSurfaceAvailable,
             onSurfaceDestroyed = onSurfaceDestroyed,
-            aspectRatio = aspect
+            aspectRatio = aspect,
+            bufferSize = mirrorSize
         )
     }
 

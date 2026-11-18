@@ -193,6 +193,8 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
 
     private val _mirroringActive = MutableStateFlow(false)
     val mirroringActive: StateFlow<Boolean> = _mirroringActive.asStateFlow()
+    private val _mirrorSize = MutableStateFlow<Pair<Int, Int>?>(null)
+    val mirrorSize: StateFlow<Pair<Int, Int>?> = _mirrorSize.asStateFlow()
 
     private val _trackInfo = MutableStateFlow(TrackInfo())
     val trackInfo: StateFlow<TrackInfo> = _trackInfo.asStateFlow()
@@ -299,6 +301,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             launch { svc.videoResolution.collect { _videoResolution.value = it } }
             launch { svc.audioOnly.collect { _audioOnly.value = it } }
             launch { svc.mirroringActive.collect { _mirroringActive.value = it } }
+            launch { svc.mirrorSize.collect { _mirrorSize.value = it } }
             launch { svc.trackInfo.collect { _trackInfo.value = it } }
             launch { svc.videoDownloader.progress.collect { _videoDownloadProgress.value = it } }
             launch {
@@ -510,6 +513,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
                 _videoBuffering.value = false
             }
             _mirroringActive.value = it.mirroringActive.value
+            _mirrorSize.value = it.mirrorSize.value
             _trackInfo.value = it.trackInfo.value
             updatePolledMetrics()
         }

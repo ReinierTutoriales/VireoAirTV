@@ -179,6 +179,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     // set once mirroring reports a real size; stops with session
     private val _mirroringActive = MutableStateFlow(false)
     val mirroringActive = _mirroringActive.asStateFlow()
+    // decoded mirroring stream size; null when no mirroring stream
+    private val _mirrorSize = MutableStateFlow<Pair<Int, Int>?>(null)
+    val mirrorSize = _mirrorSize.asStateFlow()
 
     private val _trackInfo = MutableStateFlow(TrackInfo())
     val trackInfo = _trackInfo.asStateFlow()
@@ -603,6 +606,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _audioOnly.value = false
         _videoPlaybackActive.value = false
         _mirroringActive.value = false
+        _mirrorSize.value = null
         _videoPlaybackInfo.value = VideoPlaybackInfo()
         _lastVideoPollAt = 0
         _videoPollSuppressed = false
@@ -753,6 +757,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _videoAspect.value = w / h
             _videoResolution.value = "${w.toInt()}x${h.toInt()}"
             videoRenderer.setResolution(w.toInt(), h.toInt())
+            _mirrorSize.value = w.toInt() to h.toInt()
             _mirroringActive.value = true
         }
         log("Video size: ${srcW}x${srcH} -> ${w}x${h}")
@@ -955,6 +960,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         if (running) videoRenderer.startSession() else {
             videoRenderer.stopSession()
             _mirroringActive.value = false
+            _mirrorSize.value = null
         }
         _setAudioOnly(!running)
     }

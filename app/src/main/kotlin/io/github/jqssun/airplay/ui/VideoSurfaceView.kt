@@ -19,7 +19,11 @@ fun VideoSurfaceView(
     aspectRatio: Float = 16f / 9f,
     // false = caller sizes the surface (content-scale modes)
     applyAspectRatio: Boolean = true,
+    // buffer size for producers that draw at window size (the mirroring GL blit): the compositor
+    // then scales source pixels once to the panel instead of after a GL resample to the view size
+    bufferSize: Pair<Int, Int>? = null,
 ) {
+    val state = remember { SurfaceState() }
     val callbacks = remember {
         object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -40,6 +44,13 @@ fun VideoSurfaceView(
                 it.holder.addCallback(callbacks)
             }
         },
+        update = { view ->
+            if (state.bufferSize != bufferSize) {
+                state.bufferSize = bufferSize
+                if (bufferSize != null) view.holder.setFixedSize(bufferSize.first, bufferSize.second)
+                else view.holder.setSizeFromLayout()
+            }
+        },
         modifier = if (applyAspectRatio) {
             modifier
                 .aspectRatio(aspectRatio, matchHeightConstraintsFirst = aspectRatio < 1f)
@@ -48,4 +59,8 @@ fun VideoSurfaceView(
             modifier
         }
     )
+}
+
+private class SurfaceState {
+    var bufferSize: Pair<Int, Int>? = null
 }
