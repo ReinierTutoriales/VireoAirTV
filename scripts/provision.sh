@@ -6,10 +6,23 @@ APK_PATH="${2:-}"
 SERVER_NAME="${3:-}"
 PACKAGE_NAME="${PACKAGE_NAME:-com.reiniertutoriales.vireoairtv}"
 
+if ! command -v adb >/dev/null 2>&1; then
+  echo "Error: adb not found. Install Android SDK Platform-Tools and open a new terminal." >&2
+  exit 1
+fi
+
 ADB_ARGS=()
 if [[ -n "$TARGET" ]]; then
   if [[ "$TARGET" == *:* ]]; then
-    adb connect "$TARGET"
+    # adb connect exits 0 even when it fails; check its message instead
+    out=$(adb connect "$TARGET" 2>&1 || true)
+    echo "$out"
+    if [[ "$out" == *"failed to authenticate"* ]]; then
+      echo "Accept \"Allow debugging\" on the TV; waiting..."
+    elif [[ "$out" != *"connected to"* ]]; then
+      echo "Error: cannot reach $TARGET. Check the IP and port and that debugging is on in the TV." >&2
+      exit 1
+    fi
   fi
   ADB_ARGS=(-s "$TARGET")
 fi
@@ -21,6 +34,10 @@ run_adb() {
 run_adb wait-for-device
 
 if [[ -n "$APK_PATH" ]]; then
+  if [[ ! -f "$APK_PATH" ]]; then
+    echo "Error: APK not found: $APK_PATH" >&2
+    exit 1
+  fi
   run_adb install -r -g "$APK_PATH"
 fi
 
@@ -41,15 +58,18 @@ run_adb shell dumpsys deviceidle whitelist "+$PACKAGE_NAME"
 # SettingsReceiver) until one of its components is launched once
 run_adb shell am start -W -n "$PACKAGE_NAME/io.github.jqssun.airplay.MainActivity" >/dev/null
 
+# adb shell joins its arguments into one remote command line: single-quote the value so names
+# with spaces or quotes arrive whole
 set_setting() {
   local key="$1"
   local value="$2"
-  local out
+  local quoted out
+  quoted=$(printf '%s' "$value" | sed "s/'/'\\\\''/g")
   out=$(run_adb shell am broadcast \
     -a io.github.jqssun.airplay.SET_SETTING \
     -n "$PACKAGE_NAME/io.github.jqssun.airplay.SettingsReceiver" \
     --es key "$key" \
-    --es value "$value")
+    --es value "'$quoted'")
   if [[ "$out" != *"result=-1"* ]]; then
     echo "Error: SettingsReceiver rejected $key=$value:" >&2
     echo "$out" >&2

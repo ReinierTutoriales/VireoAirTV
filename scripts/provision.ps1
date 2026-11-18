@@ -7,20 +7,41 @@
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 turns any stderr line of a native command into a terminating error under
+# "Stop" (adb prints "* daemon started successfully" there), so run adb with "Continue"
+function Invoke-Native {
+    param([string[]]$ArgsList)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { return (& adb @ArgsList 2>&1 | ForEach-Object { "$_" }) }
+    finally { $ErrorActionPreference = $prev }
+}
+
 function Invoke-Adb {
     param([string[]]$ArgsList)
     $fullArgs = @()
     if ($Target) { $fullArgs += @("-s", $Target) }
     $fullArgs += $ArgsList
-    $output = & adb @fullArgs 2>&1
+    $output = Invoke-Native $fullArgs
     if ($LASTEXITCODE -ne 0) {
         throw "adb $($fullArgs -join ' ') failed with exit code $LASTEXITCODE`n$output"
     }
     return ($output -join "`n")
 }
 
+if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
+    throw "adb not found. Install Android SDK Platform-Tools and open a new terminal."
+}
+
 if ($Target -and $Target -match ":") {
-    & adb connect $Target
+    # adb connect exits 0 even when it fails; check its message instead
+    $connect = (Invoke-Native @("connect", $Target)) -join "`n"
+    Write-Host $connect
+    if ($connect -match "failed to authenticate") {
+        Write-Host "Accept `"Allow debugging`" on the TV; waiting..."
+    } elseif ($connect -notmatch "connected to") {
+        throw "Cannot reach $Target. Check the IP and port and that debugging is on in the TV."
+    }
 }
 
 Invoke-Adb @("wait-for-device") | Out-Null
@@ -63,13 +84,16 @@ if ($ServerName) {
     $settings += ,@("server_name", $ServerName)
 }
 
+# adb shell joins its arguments into one remote command line: single-quote the value so names
+# with spaces or quotes arrive whole
 foreach ($pair in $settings) {
+    $quoted = "'" + ($pair[1] -replace "'", "'\''") + "'"
     $out = Invoke-Adb @(
         "shell", "am", "broadcast",
         "-a", "io.github.jqssun.airplay.SET_SETTING",
         "-n", "$PackageName/io.github.jqssun.airplay.SettingsReceiver",
         "--es", "key", $pair[0],
-        "--es", "value", $pair[1]
+        "--es", "value", $quoted
     )
     if ($out -notmatch "result=-1") {
         throw "SettingsReceiver rejected $($pair[0])=$($pair[1]):`n$out"
