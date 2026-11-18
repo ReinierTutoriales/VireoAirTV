@@ -127,7 +127,10 @@ tasks.register("applyUxplayPatches") {
             if (patches.isEmpty()) return@forEach
             val touched = patches.flatMap { git("apply", "--numstat", it.path).trim().lines() }
                 .map { it.substringAfterLast("\t") }.distinct()
-            git("checkout", "--", *touched.toTypedArray())
+            // files the pin tracks go back to the pin; files a patch creates are removed so it can add them again
+            val tracked = git("ls-files", "--", *touched.toTypedArray()).lines().filter { it.isNotBlank() }.toSet()
+            touched.filterNot { it in tracked }.forEach { File(repoDir, it).delete() }
+            if (tracked.isNotEmpty()) git("checkout", "--", *tracked.toTypedArray())
             patches.forEach { git("apply", "--unidiff-zero", it.path) }
         }
     }
