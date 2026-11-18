@@ -160,6 +160,8 @@ Arreglado:
   puntero equivocada tras `calloc`).
 - jqssun #84: una pausa desde la TV ya no se deshace por los informes de progreso del emisor.
 - jqssun #92: los lanzamientos del servicio encienden la pantalla (`setTurnScreenOn`), y con HDMI-CEC la TV.
+- UxPlay #601: el parser HLS descarta las variantes marcadas como doblaje en `YT-EXT-XTAGS`, así suena el
+  audio original de YouTube desde Safari (`YtDubFilter`, con tests).
 
 Ya resuelto en nuestro pin: UxPlay #545 (comprobación de `airplay_video` NULL).
 
@@ -170,8 +172,6 @@ la pantalla quieta, el caso que arregla el hilo `VideoDrain`.
 
 Pendiente, con motivo:
 - UxPlay #629 `playlistInsert` (VK Video): requiere eventos inversos `POST /event`; trabajo grande.
-- UxPlay #601 (doblaje de YouTube desde Safari): las variantes solo se distinguen por atributos privados
-  `YT-EXT-*`; requiere filtrar el master antes de ExoPlayer.
 - UxPlay #596 (HLS tras re-emparejar), #514 (reenvíos de audio): sin reproducción en host.
 - UxPlay #535 (iOS 27): upstream lo da por resuelto. Vigilar: si el autotest HEVC falla no anunciamos
   H.265 y algunas betas de iOS 27 enviaban HEVC igualmente.
@@ -189,9 +189,12 @@ Solo hay versiones alpha, beta o RC por encima; no se usan.
 - llhttp 9.3.0 → 9.4.4 (parche 0053), más nuevo que UxPlay master (9.4.2).
 - `120a166` (limpieza de asserts) no aplica sobre el pin; lo que importaba va en los parches 0054
   (nonce creado dentro de `assert()`, que release eliminaba) y 0055.
-- Commits de UxPlay sin portar, por evaluar: mejoras de HLS `6f92504`, `2b881d7` (idioma de audio y
-  subtítulos), `575c562`, `2213414`, `2136fd4`. Son funciones, no arreglos de seguridad; los arreglos
-  de seguridad posteriores al pin (`746ec0e`, `546820c`, `500579e`, `8a266a0`) ya están en él.
+- Commits de UxPlay revisados y no portados: `6f92504` (ya está: es de jqssun y vino con su base),
+  `575c562` (nuestro `adjust_yt_condensed_playlist` ya es una reescritura segura, de jqssun, en
+  conflicto con esta), `2b881d7` (idioma de subtítulos; en la app lo resuelve la selección de pistas
+  de ExoPlayer), `2213414` (cambio de API de renderers GStreamer), `942d7b2` (mensaje para FairPlay 0x02,
+  que ya soportamos con el parche 0046). Portado: `2136fd4` (parche 0056). Los arreglos de seguridad
+  posteriores al pin (`746ec0e`, `546820c`, `500579e`, `8a266a0`) ya están en él.
 - OpenSSL 4.1.1 está anunciado para el 1-12-2026.
 
 ## Verificado
