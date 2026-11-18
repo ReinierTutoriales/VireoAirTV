@@ -2,6 +2,10 @@
 
 VireoAirTV is derived from [jqssun/android-airplay-server](https://github.com/jqssun/android-airplay-server), licensed under GPL-3.0 (see `LICENSE`). Native components keep their own licenses inside their submodules: UxPlay, libplist, OpenSSL and FFmpeg.
 
+## Code from CastBay
+
+`renderer/HevcSelfTest.kt` and `app/src/main/assets/hevc_selftest.h265` are ported from [CastBay](https://github.com/weenas/castbay) by Weenas (GPL-3.0), `service/HevcSelfTest.kt` and its asset.
+
 ## Agent tooling
 
 `.agents/skills/no-ai-slop/` is an unmodified copy of the no-ai-slop skill by Peter Yang, used by contributors' agents to edit prose. It is not part of the app.

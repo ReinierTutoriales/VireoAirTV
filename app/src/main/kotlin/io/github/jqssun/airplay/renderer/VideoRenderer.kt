@@ -67,13 +67,22 @@ class VideoRenderer(ctx: Context) {
         pipeline.setDisplaySurface(null)
     }
 
-    fun selectDecoders(w: Int, h: Int, fps: Int, h265: Boolean?): Boolean = synchronized(lock) {
-        avcDecoder = selector.avc()
-        hevcDecoder = if (h265 != false) selector.hevc(avcDecoder, w, h, fps, force = h265 == true) else null
-        maxFps = fps
-        Log.i(TAG, "decoders: avc=${avcDecoder?.name} hevc=${hevcDecoder?.name}")
-        hevcDecoder != null
-    }
+    // hevcWorks: verdict of HevcSelfTest for a decoder (null = not tested); ignored when h265 is forced on
+    fun selectDecoders(w: Int, h: Int, fps: Int, h265: Boolean?, hevcWorks: (String) -> Boolean? = { null }): Boolean =
+        synchronized(lock) {
+            avcDecoder = selector.avc()
+            hevcDecoder = if (h265 != false) selector.hevc(avcDecoder, w, h, fps, force = h265 == true) else null
+            if (h265 == null && hevcDecoder?.let { hevcWorks(it.name) } == false) {
+                Log.i(TAG, "hevc decoder ${hevcDecoder?.name} failed the self-test; h264 only")
+                hevcDecoder = null
+            }
+            maxFps = fps
+            Log.i(TAG, "decoders: avc=${avcDecoder?.name} hevc=${hevcDecoder?.name}")
+            hevcDecoder != null
+        }
+
+    /** Selected H.265 decoder name, for the self-test. */
+    fun hevcDecoderName(): String? = synchronized(lock) { hevcDecoder?.name }
 
     // unknown limits default to 1080p
     fun maxResolution(): Pair<Int, Int> =

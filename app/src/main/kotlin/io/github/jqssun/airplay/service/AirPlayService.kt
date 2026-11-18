@@ -63,6 +63,7 @@ import io.github.jqssun.airplay.discovery.UsbMdnsAdvertiser
 import io.github.jqssun.airplay.download.VideoDownloader
 import io.github.jqssun.airplay.renderer.AirPlayVideoPlayer
 import io.github.jqssun.airplay.renderer.AudioRenderer
+import io.github.jqssun.airplay.renderer.HevcSelfTest
 import io.github.jqssun.airplay.renderer.VideoRenderer
 import io.github.jqssun.airplay.viewmodel.DebugInfo
 import java.io.ByteArrayOutputStream
@@ -458,7 +459,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         val overscanned = prefs[Prefs.OVERSCANNED]
         val audioLatencyMs = prefs[Prefs.AUDIO_LATENCY_MS]
         val (reqW, reqH) = _displaySize(clamp = false)
-        val h265 = videoRenderer.selectDecoders(reqW, reqH, maxFps, Prefs.forced(prefs[Prefs.H265]))
+        val h265Pref = Prefs.forced(prefs[Prefs.H265])
+        val h265 = videoRenderer.selectDecoders(reqW, reqH, maxFps, h265Pref) { HevcSelfTest.verdict(this, it) }
+        if (h265 && h265Pref == null) _scheduleHevcSelfTest()
         val alac = prefs[Prefs.ALAC_ENABLED]
         val aac = prefs[Prefs.AAC_ENABLED]
 
@@ -581,6 +584,20 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         foregroundStarted = false
         stopSelf()
+    }
+
+    // first start on a decoder or system build: test the H.265 decoder in the background; if it gives
+    // no picture, restart without H.265 while no sender is connected (otherwise at the next start)
+    private fun _scheduleHevcSelfTest() {
+        val name = videoRenderer.hevcDecoderName() ?: return
+        if (HevcSelfTest.verdict(this, name) != null) return
+        Thread({
+            if (HevcSelfTest.run(this, name)) return@Thread
+            _mainHandler.post {
+                log("H.265 decoder $name gave no picture; advertising H.264 only")
+                if (_connectionCount.value == 0) _restartServer()
+            }
+        }, "HevcSelfTest").apply { isDaemon = true }.start()
     }
 
     private fun _restartServer() {
