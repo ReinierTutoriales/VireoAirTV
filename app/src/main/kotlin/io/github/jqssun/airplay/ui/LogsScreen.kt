@@ -21,7 +21,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -35,8 +37,15 @@ fun LogsScreen(viewModel: MainViewModel) {
     val logs by viewModel.logs.collectAsState()
     val listState = rememberLazyListState()
 
+    // follow new lines only while the reader is at the end; animating every line in a burst janks
+    val following by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            (info.visibleItemsInfo.lastOrNull()?.index ?: -1) >= info.totalItemsCount - 2
+        }
+    }
     LaunchedEffect(logs.size) {
-        if (logs.isNotEmpty()) listState.animateScrollToItem(logs.size - 1)
+        if (logs.isNotEmpty() && following) listState.scrollToItem(logs.size - 1)
     }
 
     Scaffold(
@@ -61,7 +70,7 @@ fun LogsScreen(viewModel: MainViewModel) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(logs) {
+                items(logs, contentType = { "log" }) {
                     Text(it, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
                 }
             }
