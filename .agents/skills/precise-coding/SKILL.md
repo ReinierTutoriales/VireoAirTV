@@ -45,6 +45,9 @@ Every line must be traceable to existing code or a clearly labeled minimal assum
 - `adb shell` joins its arguments into one remote command line: single-quote values. `adb connect` exits 0 when it fails: check its message. Windows PowerShell 5.1 turns stderr of a native command into a terminating error under `ErrorActionPreference = Stop`.
 - In PowerShell, `curl` is an alias of `Invoke-WebRequest`; use `curl.exe` in copy-paste commands.
 
+## Commit messages state only what was checked
+- "The APK is unchanged" needs the merged manifest or APK diff to prove it; a `debugImplementation` line changes the debug APK. Describe what was measured or inspected, nothing beyond it.
+
 ## Professional code, not filler
 - Match the surrounding naming, structure and comment density. Comments state why (contract, platform fact, measured cost), never what the next line does.
 - No speculative helpers, wrappers, logging or defensive branches the callers do not need; delete code made dead by the change in the same commit.

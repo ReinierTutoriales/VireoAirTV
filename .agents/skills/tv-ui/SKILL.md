@@ -33,3 +33,13 @@ The app is not the protagonist; the sender's picture is.
 - User-visible text and content descriptions come from `stringResource`; a literal string in a composable is a localization regression.
 - A long-lived `pointerInput` handler must read changing callbacks/state through `rememberUpdatedState` or restart with the relevant keys.
 - `Modifier.border(0.dp, ...)` draws a one-pixel hairline; omit the modifier when no border is intended.
+
+## See the layout before delivering it
+- Render every new or reworked screen with `NowPlayingTvScreenshotTest`'s pattern (Robolectric, `@GraphicsMode(NATIVE)`, `captureToImage()` into `app/build/screenshots`) at 1920x1080 (`w960dp-h540dp-xhdpi`), 1280x720 and a portrait phone, and look at the PNGs before committing. Three rounds of the Now Playing screen failed on the TV because the layout was only reasoned about.
+- Request `InputMode.Keyboard` in the test so focused states render; a window starts in touch mode, where a clickable takes no focus.
+- Size from `BoxWithConstraints` (fractions of width and height, a text scale from `maxHeight / 540.dp`), not fixed dp: the same composition must hold at 720p, 1080p and 4K, landscape and portrait.
+- Apple TV reference for media screens: blurred artwork behind, sharp artwork left at about half the height, text and a thin progress line right, transport hidden until the remote is used, no volume rows (the TV remote sets volume).
+
+## After moving a screen, check where focus lands
+- When a screen closes, the next focused control must be the one the user expects; landing on Stop, Delete or Disconnect turns OK into a destructive action (the Overview card fix in 74342f3).
+- A replaced code path is deleted in the same commit, including parameters and state kept only for it.
