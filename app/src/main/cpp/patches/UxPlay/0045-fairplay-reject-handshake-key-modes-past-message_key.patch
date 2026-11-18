@@ -1,0 +1,27 @@
+From 91d1069f8acd5429541800fe8f65eb091a5ba66d Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:20:12 -0500
+Subject: [PATCH] fairplay: reject handshake key modes past message_key
+
+fairplay_handshake() stored the 164-byte key message without checking its mode byte (req[12]). playfair_decrypt() later indexes message_key[4] with it, so a client that sent mode 200 and then an ekey crashed the receiver (ASan: SEGV in decryptMessage, omg_hax.c:354). A rejected message also clears keymsglen so decrypt cannot use it. Upstream added the same check in 6ab8bf6.
+---
+ lib/fairplay_playfair.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/lib/fairplay_playfair.c b/lib/fairplay_playfair.c
+index 6e97d8e..fa53d9c 100644
+--- a/lib/fairplay_playfair.c
++++ b/lib/fairplay_playfair.c
+@@ -67,8 +67,10 @@ fairplay_handshake(fairplay_t *fp, const unsigned char req[164], unsigned char r
+ {
+     assert(fp);
+ 
+-    if (req[4] != 0x03) {
+-        /* Unsupported fairplay version */
++    /* req[12] (the key mode) later indexes message_key[4] in playfair_decrypt() */
++    if (req[4] != 0x03 || req[12] >= 4) {
++        /* Unsupported fairplay version or mode */
++        fp->keymsglen = 0;
+         return -1;
+     }
+ 
