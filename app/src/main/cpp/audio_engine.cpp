@@ -96,6 +96,12 @@ struct AudioEngine {
         mDecoder = {};
     }
 
+    // RTSP FLUSH: buffered audio belongs to the stream position before the pause or seek
+    void flush() {
+        std::lock_guard<std::mutex> lk(mRebuildLock);
+        if (mTimeline) mTimeline->requestFlush();
+    }
+
     void setClientGain(float g) {
         std::lock_guard<std::mutex> lk(mRebuildLock);
         mClientGain = g;
@@ -250,6 +256,10 @@ void audio_engine_on_format(AudioEngine *engine, int ct, int spf) {
 
 bool audio_engine_start(AudioEngine *engine) {
     return engine && engine->start();
+}
+
+void audio_engine_flush(AudioEngine *engine) {
+    if (engine) engine->flush();
 }
 
 void audio_engine_pause(AudioEngine *engine) {

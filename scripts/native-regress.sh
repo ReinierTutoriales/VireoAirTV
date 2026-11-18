@@ -19,6 +19,9 @@ flags=(-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all)
     "$ux/airplay_video.c" "$ux/logger.c" -lpthread -o "$out/hls_master_playlist"
 "$out/hls_master_playlist"
 
+c++ "${flags[@]}" -std=c++17 -I"$cpp" app/src/test/native/timeline_flush.cpp -o "$out/timeline_flush"
+"$out/timeline_flush"
+
 "$cc" "${flags[@]}" -I"$ux" -I"$ux/playfair" app/src/test/native/fairplay_setup_mode.c \
     "$ux/fairplay_playfair.c" "$ux/fairplay_v2/fairplay_v2.c" "$ux"/playfair/*.c "$ux/logger.c" \
     -lcrypto -lpthread -lm -o "$out/fairplay_setup_mode"

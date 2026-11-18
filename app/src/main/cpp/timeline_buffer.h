@@ -260,6 +260,12 @@ public:
 
     // consumer: pop frames*channels samples into out, silence-padded on underrun
     void read(int16_t *out, int32_t frames) {
+        // RTSP FLUSH (pause, seek): drop the buffered tail here, on the consumer side
+        if (mFlushRequested.exchange(false, std::memory_order_acquire)) {
+            mRing.skip(mRing.available());
+            mPriming = true;
+            mUnderran.store(true, std::memory_order_relaxed);  // producer re-anchors
+        }
         const size_t need = (size_t)frames * mChannels;
         const size_t tuned = mTracker.target();
         const int64_t now = monoNs();
@@ -323,6 +329,9 @@ public:
     // must not run concurrently with read()
     void reprime() { mPriming = true; }
 
+    // any thread: the output callback drops the buffered audio on its next read
+    void requestFlush() { mFlushRequested.store(true, std::memory_order_release); }
+
     // drop buffered audio + rebuild cushion, so resume after pause doesn't play stale
     // tail; only while output callback is stopped (skip() is consumer-side)
     void flushAndReprime() {
@@ -380,6 +389,7 @@ private:
     int64_t mLastTrimBlockNs = 0;        // consumer-only: last trim/underrun time (trim throttle)
     int64_t mAboveCapSinceNs = 0;        // consumer-only: when backlog first exceeded cap (0 = under)
     std::atomic<bool> mUnderran{false};  // consumer->producer: underrun happened
+    std::atomic<bool> mFlushRequested{false};  // any thread->consumer: drop buffered audio
 
     int64_t mExpectedPtsNs = 0;          // presentation time expected at write head
 };
