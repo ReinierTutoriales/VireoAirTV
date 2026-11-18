@@ -13,6 +13,7 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.net.ConnectivityManager
@@ -64,6 +65,7 @@ import io.github.jqssun.airplay.renderer.AirPlayVideoPlayer
 import io.github.jqssun.airplay.renderer.AudioRenderer
 import io.github.jqssun.airplay.renderer.VideoRenderer
 import io.github.jqssun.airplay.viewmodel.DebugInfo
+import java.io.ByteArrayOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.security.SecureRandom
@@ -902,8 +904,15 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onCoverArt(data: ByteArray) {
-        val bmp = BitmapFactory.decodeByteArray(data, 0, data.size) ?: return
-        _coverArtBytes = data
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= COVER_ART_MAX_PX) sample *= 2
+        val bmp = BitmapFactory.decodeByteArray(data, 0, data.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
+        // the session decodes artwork again: hand it the reduced image, not the sender's original
+        _coverArtBytes = if (sample == 1) data else ByteArrayOutputStream().also {
+            bmp.compress(Bitmap.CompressFormat.JPEG, COVER_ART_JPEG_QUALITY, it)
+        }.toByteArray()
         _trackInfo.value = _trackInfo.value.copy(coverArt = bmp)
         _updateMediaMetadata()
         _refreshDacpPlayer()
@@ -1310,6 +1319,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // shared with dpad/double-tap seeks
         const val VIDEO_SEEK_STEP_MS = 10_000L
         private const val SESSION_ID = "AirPlay"
+        // a 3000px cover decodes to ~36 MB; 720px covers the notification and the TV player
+        private const val COVER_ART_MAX_PX = 720
+        private const val COVER_ART_JPEG_QUALITY = 90
         const val VIDEO_POLL_PENDING_TIMEOUT_MS = 3_000L
 
         private const val AUDIO_CONFIG_DEBOUNCE_MS = 500L
