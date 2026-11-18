@@ -30,6 +30,30 @@ static JNIEnv *_get_env(android_callback_ctx_t *ctx) {
     return env;
 }
 
+/* NewStringUTF aborts the process on bytes that are not Modified UTF-8, and these strings come
+   from the network. They are ASCII by protocol (DACP ids, URLs): percent-encode anything else. */
+static jstring _new_ascii_string(JNIEnv *env, const char *s) {
+    static const char hex[] = "0123456789ABCDEF";
+    size_t len = strlen(s);
+    char *out = malloc(len * 3 + 1);
+    if (!out) return NULL;
+    size_t o = 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c > 0x20 && c < 0x7f) {
+            out[o++] = (char)c;
+        } else {
+            out[o++] = '%';
+            out[o++] = hex[c >> 4];
+            out[o++] = hex[c & 0x0f];
+        }
+    }
+    out[o] = '\0';
+    jstring js = (*env)->NewStringUTF(env, out);
+    free(out);
+    return js;
+}
+
 void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject callback_obj) {
     (*env)->GetJavaVM(env, &ctx->jvm);
     ctx->callback_obj = (*env)->NewGlobalRef(env, callback_obj);
@@ -261,9 +285,11 @@ static void _audio_remote_control_id(void *cls, const char *dacp_id, const char 
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     JNIEnv *env = _get_env(ctx);
     if (!env) return;
-    jstring jdacp = (*env)->NewStringUTF(env, dacp_id ? dacp_id : "");
-    jstring jremote = (*env)->NewStringUTF(env, active_remote ? active_remote : "");
-    (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_dacp_id, jdacp, jremote);
+    jstring jdacp = _new_ascii_string(env, dacp_id ? dacp_id : "");
+    jstring jremote = _new_ascii_string(env, active_remote ? active_remote : "");
+    if (jdacp && jremote) {
+        (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_dacp_id, jdacp, jremote);
+    }
     (*env)->DeleteLocalRef(env, jdacp);
     (*env)->DeleteLocalRef(env, jremote);
 }
@@ -313,7 +339,8 @@ static void _video_play(void *cls, const char *location, const float start_posit
     android_callbacks_update_playback_info(ctx, start_position, 0.0, 0.0f, 0);
     JNIEnv *env = _get_env(ctx);
     if (!env || !location) return;
-    jstring jloc = (*env)->NewStringUTF(env, location);
+    jstring jloc = _new_ascii_string(env, location);
+    if (!jloc) return;
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_video_play, jloc, (jfloat)start_position);
     (*env)->DeleteLocalRef(env, jloc);
 }
