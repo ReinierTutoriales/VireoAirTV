@@ -22,6 +22,10 @@ class VideoRenderer(ctx: Context) {
     private var videoWidth = 0
     private var videoHeight = 0
     private var firstFrameQueued = false
+    // output side runs on its own thread so a decoded frame reaches the screen as soon as it is ready,
+    // not when the next input frame arrives
+    private var _drainThread: Thread? = null
+    @Volatile private var _draining = false
 
     // stats
     @Volatile var fps = 0; private set
@@ -33,7 +37,7 @@ class VideoRenderer(ctx: Context) {
 
     var enforceSdr = true
     var keyAllowFrameDrop = true
-    var scheduledOutputBufferRelease = true
+    @Volatile var scheduledOutputBufferRelease = true
     var benchmarkLog = false
     var benchmarkLogCallback: ((String) -> Unit)? = null
     private var _framesThisSec = 0
@@ -41,7 +45,7 @@ class VideoRenderer(ctx: Context) {
     private var _lastStatReset = 0L
     private val _frameIntervalsNs = LongArray(120)
     private var _frameIntervalIdx = 0
-    private var _frameIntervalCount = 0
+    @Volatile private var _frameIntervalCount = 0
     private var _lastOutputFrameNs = 0L
     // anchors that map decoder PTS (us) to System.nanoTime() for scheduled rendering
     private var _ptsBaseUs = Long.MIN_VALUE
@@ -146,7 +150,6 @@ class VideoRenderer(ctx: Context) {
             try {
                 if (codec == null) startCodec(isH265)
                 _feedToCodec(data, ntpTimeNs)
-                drainOutput()
             } catch (e: Exception) {
                 Log.w(TAG, "Codec error, resetting", e)
                 stopCodec()
@@ -168,7 +171,6 @@ class VideoRenderer(ctx: Context) {
                 firstFrameQueued = true
                 return
             }
-            drainOutput()
         }
         droppedFrames++
         Log.w(TAG, "Decoder input queue full; dropping frame. drops=$droppedFrames")
@@ -258,9 +260,18 @@ class VideoRenderer(ctx: Context) {
         }
         codec = c
         codecName = (if (h265) "H.265" else "H.264") + " (${c.name})"
+        _draining = true
+        _drainThread = Thread({ _drainLoop(c) }, "VideoDrain").apply { start() }
     }
 
     private fun stopCodec() {
+        // the drain thread must leave dequeueOutputBuffer before the codec stops
+        _draining = false
+        _drainThread?.let {
+            it.interrupt()
+            try { it.join(DRAIN_JOIN_MS) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+        }
+        _drainThread = null
         _frameIntervalIdx = 0
         _frameIntervalCount = 0
         _lastOutputFrameNs = 0L
@@ -275,25 +286,35 @@ class VideoRenderer(ctx: Context) {
         codec = null
     }
 
-    private fun drainOutput() {
-        val c = codec ?: return
+    private fun _drainLoop(c: MediaCodec) {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY)
         val info = MediaCodec.BufferInfo()
-        while (true) {
-            val idx = c.dequeueOutputBuffer(info, 0)
-            if (idx < 0) break
-            _recordOutputFrameTime()
-            if (scheduledOutputBufferRelease) {
-                // schedule frame at VSYNC matching its NTP presentation time
-                val ptsUs = info.presentationTimeUs
-                if (_ptsBaseUs == Long.MIN_VALUE) {
-                    _ptsBaseUs = ptsUs
-                    _wallBaseNs = System.nanoTime()
-                }
-                c.releaseOutputBuffer(idx, _wallBaseNs + (ptsUs - _ptsBaseUs) * 1000L)
-            } else {
-                c.releaseOutputBuffer(idx, true)
+        try {
+            while (_draining) {
+                val idx = c.dequeueOutputBuffer(info, DRAIN_WAIT_US)
+                if (idx < 0) continue
+                if (!_draining) { c.releaseOutputBuffer(idx, false); break }
+                _release(c, idx, info)
             }
+        } catch (e: IllegalStateException) {
+            // codec error or released; the feed side resets it on its next frame
+            if (_draining) Log.w(TAG, "Decoder output failed", e)
         }
+    }
+
+    private fun _release(c: MediaCodec, idx: Int, info: MediaCodec.BufferInfo) {
+        _recordOutputFrameTime()
+        if (!scheduledOutputBufferRelease) {
+            c.releaseOutputBuffer(idx, true)
+            return
+        }
+        // schedule the frame at the VSYNC matching its NTP presentation time
+        val ptsUs = info.presentationTimeUs
+        if (_ptsBaseUs == Long.MIN_VALUE) {
+            _ptsBaseUs = ptsUs
+            _wallBaseNs = System.nanoTime()
+        }
+        c.releaseOutputBuffer(idx, _wallBaseNs + (ptsUs - _ptsBaseUs) * 1000L)
     }
 
     fun release() = synchronized(lock) {
@@ -334,5 +355,7 @@ class VideoRenderer(ctx: Context) {
         private const val FEED_WAIT_US = 20_000L
         private const val FEED_RETRIES = 10
         private const val FIRST_FEED_RETRIES = 50
+        private const val DRAIN_WAIT_US = 10_000L
+        private const val DRAIN_JOIN_MS = 500L
     }
 }
