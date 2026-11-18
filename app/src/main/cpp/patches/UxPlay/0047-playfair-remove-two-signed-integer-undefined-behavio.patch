@@ -1,0 +1,39 @@
+From ce251fe1b28cc91ae8772877f394196aeafe11b9 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:33:38 -0500
+Subject: [PATCH] playfair: remove two signed-integer undefined behaviours
+
+modified_md5.c shifted an unsigned char promoted to int into bit 31, and hand_garble.c multiplied four bytes as int, which overflows. Both now use uint32_t. Only the low 32 bits (MD5) and the low byte (buffer3[68]) are used, so the results are the same: 200000 random key messages in all four modes decrypt to identical keys before and after, with gcc and clang at -O2, and UBSan reports nothing.
+---
+ lib/playfair/hand_garble.c  | 3 ++-
+ lib/playfair/modified_md5.c | 3 ++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/lib/playfair/hand_garble.c b/lib/playfair/hand_garble.c
+index 8e8361b..d6f758e 100644
+--- a/lib/playfair/hand_garble.c
++++ b/lib/playfair/hand_garble.c
+@@ -263,7 +263,8 @@ void garble(unsigned char* buffer0, unsigned char* buffer1, unsigned char* buffe
+    D = ((((buffer3[0]/3) - (buffer3[64]|buffer1[22]))) ^ (buffer3[28] + 62) ^ ((B|C)));
+    T = buffer0[(D & 0xff) % 20];
+ 
+-   buffer3[68] = (buffer0[buffer1[99] % 20] * buffer0[buffer1[99] % 20] * buffer0[buffer1[99] % 20] * buffer0[buffer1[99] % 20]) | buffer2[buffer3[64] % 35];
++   /* unsigned product: the int one overflows; only its low byte is kept, which wrapping preserves */
++   buffer3[68] = ((uint32_t)buffer0[buffer1[99] % 20] * buffer0[buffer1[99] % 20] * buffer0[buffer1[99] % 20] * buffer0[buffer1[99] % 20]) | buffer2[buffer3[64] % 35];
+    printf("buffer3[68] = %02x\n", buffer3[68]);
+ 
+    U = buffer0[buffer1[50] % 20]; // this is also v100
+diff --git a/lib/playfair/modified_md5.c b/lib/playfair/modified_md5.c
+index 3758a33..ce47656 100644
+--- a/lib/playfair/modified_md5.c
++++ b/lib/playfair/modified_md5.c
+@@ -74,7 +74,8 @@ void modified_md5(unsigned char* originalblockIn, unsigned char* keyIn, unsigned
+       else if (i < 64)
+          j = 7*i % 16;
+ 
+-      input = blockIn[4*j] << 24 | blockIn[4*j+1] << 16 | blockIn[4*j+2] << 8 | blockIn[4*j+3];
++      /* uint32_t: a byte >= 0x80 shifted into bit 31 of an int is undefined */
++      input = (uint32_t)blockIn[4*j] << 24 | (uint32_t)blockIn[4*j+1] << 16 | (uint32_t)blockIn[4*j+2] << 8 | blockIn[4*j+3];
+       printf("Key = %08x\n", A);
+       Z = A + input + (int)(long long)((1LL << 32) * fabs(sin(i + 1)));
+       if (i < 16)
