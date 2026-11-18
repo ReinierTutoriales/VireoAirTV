@@ -112,13 +112,16 @@ fun MainScreen(
         val aspect by viewModel.videoAspect.collectAsState()
         val mirrorSize by viewModel.mirrorSize.collectAsState()
         val maxFps by viewModel.pref(Prefs.MAX_FPS).collectAsState()
-        VideoSurfaceView(
-            onSurfaceAvailable = onSurfaceAvailable,
-            onSurfaceDestroyed = onSurfaceDestroyed,
-            aspectRatio = aspect,
-            bufferSize = mirrorSize,
-            frameRate = if (mirrorSize != null) maxFps.toFloat() else 0f
-        )
+        Box(contentAlignment = Alignment.Center) {
+            VideoSurfaceView(
+                onSurfaceAvailable = onSurfaceAvailable,
+                onSurfaceDestroyed = onSurfaceDestroyed,
+                aspectRatio = aspect,
+                bufferSize = mirrorSize,
+                frameRate = if (mirrorSize != null) maxFps.toFloat() else 0f
+            )
+            FadeFromBlack(active = mirrorSize != null, modifier = Modifier.matchParentSize())
+        }
     }
 
     // fullscreen only once mirroring reports a size: connections rise before the kind is known
