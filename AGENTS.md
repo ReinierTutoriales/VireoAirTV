@@ -20,6 +20,7 @@ The `applyUxplayPatches` task applies `app/src/main/cpp/patches/{UxPlay,libplist
 ## Priorities
 - Stable, recoverable receiver on Android TV/Google TV: discovery, sessions, mirroring, audio and HLS video.
 - Low memory and low latency on TV hardware; select behavior by API level and reported codec capabilities, never by model.
+- Quality first: a change that lowers image, audio or video quality (resolution, bitrate, codec, scaling, sync) is a regression, not an optimization. Latency and memory gains count only when quality is unchanged and both are measured on the device.
 - Do not invent APIs, protocol features or device behavior not present in the code or official documentation.
 - Keep GPL-3.0 obligations and upstream credits.
 
