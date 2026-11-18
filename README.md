@@ -17,55 +17,55 @@ No reproduce contenido con DRM de Apple (app Apple TV, Netflix y similares). Esa
 
 ## Instalación
 
-Se hace una vez desde un ordenador en la misma red que la tele. Al terminar, la app arranca sola al encender la tele y pasa al frente cuando proyectas.
+Se instala una sola vez desde un ordenador conectado a la misma red que la tele, con ADB, la herramienta oficial de Google para Android. Al terminar, la app arranca sola al encender la tele y pasa al frente cuando proyectas.
 
-### Paso 1. Instala ADB en el ordenador
+Necesitas:
 
-Windows (después, cierra y vuelve a abrir la terminal):
+- Tele o reproductor con Android TV o Google TV (Android 7.0 o superior).
+- Ordenador con Windows, macOS o Linux.
+- [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools), que incluye `adb` ([documentación de ADB](https://developer.android.com/tools/adb)).
+
+### 1. Instala ADB
+
+Con el gestor de paquetes de tu sistema:
 
 ```powershell
 winget install --id Google.PlatformTools -e
 ```
 
-macOS:
-
 ```bash
 brew install --cask android-platform-tools
 ```
-
-Debian o Ubuntu:
 
 ```bash
 sudo apt install adb
 ```
 
-Fedora:
+Son para Windows, macOS y Debian/Ubuntu, en ese orden. En Fedora usa `sudo dnf install android-tools` y en Arch `sudo pacman -S android-tools`.
+
+También puedes descargar el ZIP oficial de Google, descomprimirlo y añadir la carpeta `platform-tools` al PATH: [Windows](https://dl.google.com/android/repository/platform-tools-latest-windows.zip), [macOS](https://dl.google.com/android/repository/platform-tools-latest-darwin.zip), [Linux](https://dl.google.com/android/repository/platform-tools-latest-linux.zip).
+
+Abre una terminal nueva y comprueba que responde:
 
 ```bash
-sudo dnf install android-tools
+adb version
 ```
 
-Arch:
+### 2. Activa la depuración en la tele
 
-```bash
-sudo pacman -S android-tools
-```
+1. **Ajustes > Sistema > Información** (en algunas teles, **Preferencias del dispositivo > Información**): pulsa 7 veces **Compilación del SO de Android TV**.
+2. Vuelve atrás, entra en **Opciones para desarrolladores** y activa **Depuración USB**. Si tu tele tiene **Depuración inalámbrica**, actívala también.
+3. Apunta la IP de la tele en **Ajustes > Red e Internet**, dentro de tu red.
 
-### Paso 2. Activa la depuración en la tele
-
-1. **Ajustes > Sistema > Información** (en algunas teles, **Preferencias del dispositivo > Información**): pulsa 7 veces **Compilación del SO de Android TV** hasta que diga que ya eres desarrollador.
-2. Vuelve atrás, entra en **Opciones para desarrolladores** y activa **Depuración inalámbrica** o, si no aparece, **Depuración USB**.
-3. Apunta la IP de la tele: sale en la pantalla de Depuración inalámbrica o en **Ajustes > Red e Internet**.
-
-Si tu tele usa **Depuración inalámbrica**, vincúlala una vez con el código de **Vincular dispositivo con un código** (usa la IP y el puerto de esa pantalla):
+Solo con **Depuración inalámbrica**: entra en ella, elige **Vincular dispositivo con un código** y vincula el ordenador con la IP y el puerto que muestra esa pantalla. Después usa el puerto de la pantalla principal de Depuración inalámbrica en el paso 3.
 
 ```bash
 adb pair 192.168.1.50:37001
 ```
 
-### Paso 3. Instala VireoAirTV
+### 3. Instala VireoAirTV
 
-Cambia la IP de la primera línea por la de tu tele y copia el bloque entero. Con Depuración USB el puerto es `5555`; con Depuración inalámbrica, el que muestra la pantalla principal de esa opción.
+Cambia la IP de la primera línea por la de tu tele, copia el bloque entero y pégalo en la terminal. Descarga la última versión y el script, y lo ejecuta.
 
 macOS o Linux:
 
@@ -85,41 +85,53 @@ curl.exe -fLO https://raw.githubusercontent.com/ReinierTutoriales/VireoAirTV/mai
 powershell -ExecutionPolicy Bypass -File .\provision.ps1 -Target $TV -ApkPath app-release.apk
 ```
 
-La primera vez la tele pregunta **¿Permitir depuración?**: marca **Permitir siempre** y acepta. El script espera a que lo hagas.
+Si la tele pregunta **¿Permitir depuración?**, marca **Permitir siempre** y acepta; el script espera. Termina con `Provisioning completed` y la tele vuelve a su pantalla de inicio.
 
-El script instala la app, concede todos los permisos sin diálogos, la excluye del ahorro de energía, activa el arranque al encender y el audio ALAC, y deja la tele en su pantalla de inicio.
+El script instala la app, concede sus permisos sin diálogos, la excluye del ahorro de energía, activa el arranque al encender y el audio ALAC, y comprueba cada paso. Si algo falla, se detiene y dice qué.
 
-### Paso 4. Proyecta
+### 4. Proyecta
 
-En el iPhone: **Centro de control > Duplicar pantalla >** el nombre de la tele. Para música o vídeo, usa el icono de AirPlay dentro de la app.
+En el iPhone: **Centro de control > Duplicar pantalla >** VireoAirTV. Para música o vídeo, usa el icono de AirPlay dentro de la app.
 
-Ya puedes desactivar la depuración en la tele; los permisos y ajustes se mantienen.
+Después puedes desactivar la depuración en la tele; la app y sus ajustes se mantienen.
 
-### Cambiar el nombre de la tele
+## Mantenimiento
 
-Añade el nombre al final del comando del paso 3:
+Para actualizar, repite el paso 3: descarga la última versión y conserva los ajustes.
+
+Para cambiar el nombre que ve el iPhone, usa el bloque del paso 3 con el nombre al final:
 
 ```bash
+TV=192.168.1.50:5555
+curl -fLO https://github.com/ReinierTutoriales/VireoAirTV/releases/latest/download/app-release.apk
+curl -fLO https://raw.githubusercontent.com/ReinierTutoriales/VireoAirTV/main/scripts/provision.sh
 bash provision.sh $TV app-release.apk "Salón"
 ```
 
 ```powershell
+$TV = "192.168.1.50:5555"
+curl.exe -fLO https://github.com/ReinierTutoriales/VireoAirTV/releases/latest/download/app-release.apk
+curl.exe -fLO https://raw.githubusercontent.com/ReinierTutoriales/VireoAirTV/main/scripts/provision.ps1
 powershell -ExecutionPolicy Bypass -File .\provision.ps1 -Target $TV -ApkPath app-release.apk -ServerName "Salón"
 ```
 
-### Actualizar
+Para desinstalar (con la depuración activa, cambiando la IP):
 
-Repite el paso 3. Descarga la última versión y conserva tus ajustes.
+```bash
+adb connect 192.168.1.50:5555
+adb uninstall com.reiniertutoriales.vireoairtv
+```
 
 ### Sin ordenador
 
-Instala `app-release.apk` con una app como Downloader. Funciona igual, pero si tu tele no ofrece **Mostrar sobre otras apps** en **Ajustes > Apps > Acceso especial de apps**, la app no podrá pasar al frente sola y te avisará con una notificación.
+Instala `app-release.apk` con una app como Downloader. Todo funciona igual salvo una cosa: si tu tele no ofrece **Mostrar sobre otras apps** en **Ajustes > Apps > Acceso especial de apps**, la app no puede pasar al frente sola y te avisa con una notificación.
 
-### Si algo falla
+### Problemas frecuentes
 
-- **El iPhone no ve la tele:** deben estar en la misma red (no en la de invitados) y el router no debe aislar los dispositivos.
-- **`adb connect` no responde:** revisa IP y puerto en la tele; con Depuración inalámbrica el puerto cambia cada vez que se activa.
-- **La app no pasa al frente al proyectar:** vuelve a ejecutar el paso 3.
+- **El script dice que no encuentra `adb`:** abre una terminal nueva después de instalarlo.
+- **`Cannot reach`:** revisa la IP y el puerto. Con Depuración inalámbrica el puerto cambia cada vez que se activa.
+- **El iPhone no ve la tele:** tienen que estar en la misma red (no en la de invitados) y el router no debe aislar los dispositivos.
+- **La app no pasa al frente al proyectar:** repite el paso 3.
 
 ## Ajustes por ADB
 
