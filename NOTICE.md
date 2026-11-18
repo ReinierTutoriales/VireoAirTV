@@ -4,7 +4,7 @@ VireoAirTV is derived from [jqssun/android-airplay-server](https://github.com/jq
 
 ## Code from CastBay
 
-`renderer/HevcSelfTest.kt` and `app/src/main/assets/hevc_selftest.h265` are ported from [CastBay](https://github.com/weenas/castbay) by Weenas (GPL-3.0), `service/HevcSelfTest.kt` and its asset.
+`renderer/HevcSelfTest.kt` with `app/src/main/assets/hevc_selftest.h265`, and `renderer/MediaTracks.kt`, are ported from [CastBay](https://github.com/weenas/castbay) by Weenas (GPL-3.0): `service/HevcSelfTest.kt` with its asset and `service/MediaTracks.kt`.
 
 ## Agent tooling
 

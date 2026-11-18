@@ -10,14 +10,21 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
+import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.jqssun.airplay.Pref
 import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.audio.TrackInfo
 import io.github.jqssun.airplay.get
 import io.github.jqssun.airplay.observe
+import io.github.jqssun.airplay.renderer.TrackChoice
 import io.github.jqssun.airplay.service.AirPlayService
 import io.github.jqssun.airplay.service.AirPlayService.ServerState
-import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import javax.inject.Inject
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -29,12 +36,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import kotlin.math.abs
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import javax.inject.Inject
 
 enum class LocalNetworkAccess { GRANTED, ASK, SETTINGS }
 
@@ -177,6 +178,10 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     val videoPlaybackSize: StateFlow<Pair<Int, Int>?> = _videoPlaybackSize.asStateFlow()
     private val _videoFrameShown = MutableStateFlow(false)
     val videoFrameShown: StateFlow<Boolean> = _videoFrameShown.asStateFlow()
+    private val _videoTracksTick = MutableStateFlow(0)
+    val videoTracksTick: StateFlow<Int> = _videoTracksTick.asStateFlow()
+    private val _videoCues = MutableStateFlow("")
+    val videoCues: StateFlow<String> = _videoCues.asStateFlow()
 
     private val _videoBuffering = MutableStateFlow(false)
     val videoBuffering: StateFlow<Boolean> = _videoBuffering.asStateFlow()
@@ -368,6 +373,8 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             launch { svc.videoPlaybackAspect.collect { _videoPlaybackAspect.value = it } }
             launch { svc.videoPlaybackSize.collect { _videoPlaybackSize.value = it } }
             launch { svc.videoFrameShown.collect { _videoFrameShown.value = it } }
+            launch { svc.videoTracksTick.collect { _videoTracksTick.value = it } }
+            launch { svc.videoCues.collect { _videoCues.value = it } }
             launch { svc.videoTitle.collect { _videoTitle.value = it.ifEmpty { svc.trackInfo.value.title } } }
             launch { svc.videoLocation.collect { _videoLocation.value = it } }
         }
@@ -452,6 +459,14 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
 
     fun stopVideoPlayback() {
         service?.stopVideoPlayback()
+    }
+
+    /** Main thread only, like the player. */
+    fun videoTrackChoices(type: Int, off: String, untitled: (Int) -> String): List<TrackChoice> =
+        service?.videoTrackChoices(type, off, untitled).orEmpty()
+
+    fun selectVideoTrack(type: Int, choice: TrackChoice) {
+        service?.selectVideoTrack(type, choice)
     }
 
     fun setVideoSpeed(speed: Float) {

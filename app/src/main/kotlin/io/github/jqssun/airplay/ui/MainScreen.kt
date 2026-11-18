@@ -58,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.ui.compose.material3.MiniController
@@ -267,6 +269,19 @@ fun MainScreen(
             context.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
         }
         var showSpeedSelector by remember { mutableStateOf(false) }
+        var showTrackSelector by remember { mutableStateOf(false) }
+        // audio languages and subtitles of the current video (HLS renditions), refreshed when they change
+        val tracksTick by viewModel.videoTracksTick.collectAsState()
+        val cues by viewModel.videoCues.collectAsState()
+        val trackOff = stringResource(R.string.tracks_off)
+        val resources = LocalResources.current
+        val audioChoices = remember(tracksTick) {
+            viewModel.videoTrackChoices(C.TRACK_TYPE_AUDIO, trackOff) { resources.getString(R.string.tracks_untitled, it) }
+        }
+        val subtitleChoices = remember(tracksTick) {
+            viewModel.videoTrackChoices(C.TRACK_TYPE_TEXT, trackOff) { resources.getString(R.string.tracks_untitled, it) }
+        }
+        val hasTrackChoices = audioChoices.size > 1 || subtitleChoices.isNotEmpty()
         BackHandler { viewModel.stopVideoPlayback() }
 
         val rootFocusRequester = remember { FocusRequester() }
@@ -274,8 +289,8 @@ fun MainScreen(
         val unlockFocusRequester = remember { FocusRequester() }
         var isPlayPauseFocused by remember { mutableStateOf(false) }
         var isUnlockFocused by remember { mutableStateOf(false) }
-        LaunchedEffect(overlayVisible, controlsLocked, showSpeedSelector) {
-            if (showSpeedSelector) return@LaunchedEffect
+        LaunchedEffect(overlayVisible, controlsLocked, showSpeedSelector, showTrackSelector) {
+            if (showSpeedSelector || showTrackSelector) return@LaunchedEffect
             if (!overlayVisible) {
                 runCatching { rootFocusRequester.requestFocus() }
                 return@LaunchedEffect
@@ -311,7 +326,7 @@ fun MainScreen(
                 .focusRequester(rootFocusRequester)
                 .focusable()
                 .onPreviewKeyEvent { keyEvent ->
-                    if (showSpeedSelector) {
+                    if (showSpeedSelector || showTrackSelector) {
                         false
                     } else {
                         handlePlayerKeyEvent(
@@ -347,6 +362,7 @@ fun MainScreen(
                 // same size and transform as the surface; both centered by VideoContentFrame
                 FadeFromBlack(active = frameShown, modifier = sizeModifier)
             }
+            SubtitleText(cues)
             VideoPlayerGestures(
                 enabled = videoPlaybackActive,
                 locked = controlsLocked,
@@ -458,6 +474,12 @@ fun MainScreen(
                             overlayVisible = false
                             showSpeedSelector = true
                         },
+                        onTracksClick = if (hasTrackChoices) {
+                            {
+                                overlayVisible = false
+                                showTrackSelector = true
+                            }
+                        } else null,
                         onDownloadClick = { viewModel.toggleVideoDownload() }
                     )
                 }
@@ -516,6 +538,14 @@ fun MainScreen(
                 onSpeedChange = { viewModel.setVideoSpeed(it) },
                 onSkipSilenceChange = { viewModel.setVideoSkipSilence(it) },
                 onDismiss = { showSpeedSelector = false }
+            )
+            TrackSelector(
+                show = showTrackSelector,
+                audio = audioChoices,
+                subtitles = subtitleChoices,
+                onAudio = { viewModel.selectVideoTrack(C.TRACK_TYPE_AUDIO, it) },
+                onSubtitle = { viewModel.selectVideoTrack(C.TRACK_TYPE_TEXT, it) },
+                onDismiss = { showTrackSelector = false }
             )
         }
         return

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -182,6 +183,8 @@ fun VideoControlsTop(
     onSpeedClick: () -> Unit,
     onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // null when the video offers no alternative audio or subtitles
+    onTracksClick: (() -> Unit)? = null,
 ) {
     val insets = WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues()
     val layoutDirection = LocalLayoutDirection.current
@@ -214,6 +217,11 @@ fun VideoControlsTop(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (onTracksClick != null) {
+                PlayerButton(onClick = onTracksClick) {
+                    Icon(Icons.Rounded.Subtitles, contentDescription = stringResource(R.string.tracks_title))
+                }
+            }
             PlayerButton(onClick = onSpeedClick) {
                 Icon(Icons.Rounded.Speed, contentDescription = stringResource(R.string.select_playback_speed))
             }

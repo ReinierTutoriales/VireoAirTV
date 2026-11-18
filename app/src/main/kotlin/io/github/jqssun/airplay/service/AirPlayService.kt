@@ -64,6 +64,7 @@ import io.github.jqssun.airplay.download.VideoDownloader
 import io.github.jqssun.airplay.renderer.AirPlayVideoPlayer
 import io.github.jqssun.airplay.renderer.AudioRenderer
 import io.github.jqssun.airplay.renderer.HevcSelfTest
+import io.github.jqssun.airplay.renderer.TrackChoice
 import io.github.jqssun.airplay.renderer.VideoRenderer
 import io.github.jqssun.airplay.viewmodel.DebugInfo
 import java.io.ByteArrayOutputStream
@@ -162,6 +163,11 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     // true once the current item has drawn a frame; drives the fade-in
     private val _videoFrameShown = MutableStateFlow(false)
     val videoFrameShown = _videoFrameShown.asStateFlow()
+    // bumps when the video's audio/subtitle tracks change; the text of the subtitle on screen
+    private val _videoTracksTick = MutableStateFlow(0)
+    val videoTracksTick = _videoTracksTick.asStateFlow()
+    private val _videoCues = MutableStateFlow("")
+    val videoCues = _videoCues.asStateFlow()
 
     // container/manifest metadata
     private val _videoTitle = MutableStateFlow("")
@@ -337,6 +343,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         }
         airPlayVideoPlayer.onTitle = { _videoTitle.value = it ?: "" }
         airPlayVideoPlayer.onFirstFrame = { _videoFrameShown.value = true }
+        airPlayVideoPlayer.onTracksChanged = { _videoTracksTick.value++ }
+        airPlayVideoPlayer.onCues = { _videoCues.value = it }
         airPlayVideoPlayer.onEnded = { _endVideoPlayback("AirPlay Video stopped (player)") }
         airPlayVideoPlayer.onPlaybackInfo = { snapshot ->
             if (nativeHandle != 0L) {
@@ -676,6 +684,11 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     fun setVideoSpeed(speed: Float) {
         airPlayVideoPlayer.setSpeed(speed)
     }
+
+    fun videoTrackChoices(type: Int, off: String, untitled: (Int) -> String) =
+        airPlayVideoPlayer.trackChoices(type, off, untitled)
+
+    fun selectVideoTrack(type: Int, choice: TrackChoice) = airPlayVideoPlayer.selectTrack(type, choice)
 
     fun setVideoSkipSilence(enabled: Boolean) {
         airPlayVideoPlayer.setSkipSilence(enabled)

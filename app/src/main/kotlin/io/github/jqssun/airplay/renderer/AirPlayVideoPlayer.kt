@@ -11,6 +11,8 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.common.Tracks
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -55,6 +57,9 @@ class AirPlayVideoPlayer(private val context: Context) {
     var onTitle: ((String?) -> Unit)? = null
     var onEnded: (() -> Unit)? = null
     var onFirstFrame: (() -> Unit)? = null
+    // track list changed (audio languages, subtitles) and the subtitle text to show ("" = none)
+    var onTracksChanged: (() -> Unit)? = null
+    var onCues: ((String) -> Unit)? = null
 
     private val _reportTick = object : Runnable {
         override fun run() {
@@ -77,6 +82,12 @@ class AirPlayVideoPlayer(private val context: Context) {
         }
         override fun onRenderedFirstFrame() {
             onFirstFrame?.invoke()
+        }
+        override fun onTracksChanged(tracks: Tracks) {
+            onTracksChanged?.invoke()
+        }
+        override fun onCues(cueGroup: CueGroup) {
+            onCues?.invoke(cueGroup.cues.mapNotNull { it.text?.toString()?.trim()?.ifEmpty { null } }.joinToString("\n"))
         }
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
             onTitle?.invoke(mediaMetadata.title?.toString())
@@ -132,6 +143,15 @@ class AirPlayVideoPlayer(private val context: Context) {
     }
 
     // local speed toggle: unlike setRate it must not resume a paused player
+    /** Main thread only. */
+    fun trackChoices(type: Int, off: String, untitled: (Int) -> String): List<TrackChoice> =
+        player?.let { MediaTracks.choices(it, type, off, untitled) }.orEmpty()
+
+    /** Main thread only. */
+    fun selectTrack(type: Int, choice: TrackChoice) {
+        player?.let { MediaTracks.select(it, type, choice) }
+    }
+
     fun setSpeed(speed: Float) = mainHandler.post {
         player?.playbackParameters = PlaybackParameters(speed.coerceAtLeast(0.1f))
     }
@@ -177,6 +197,8 @@ class AirPlayVideoPlayer(private val context: Context) {
             it.release()
         }
         player = null
+        onCues?.invoke("")
+        onTracksChanged?.invoke()
         // duration=-1 is the "video finished" sentinel for the playback-info handler
         if (reportStopped) {
             onPlaybackInfo?.invoke(PlaybackSnapshot(0f, -1f, 0f, false, false))
