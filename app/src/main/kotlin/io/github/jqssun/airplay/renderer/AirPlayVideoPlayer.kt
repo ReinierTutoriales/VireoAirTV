@@ -156,8 +156,7 @@ class AirPlayVideoPlayer(private val context: Context) {
     fun trackChoices(type: Int, off: String, untitled: (Int) -> String): List<TrackChoice> =
         player?.let { MediaTracks.choices(it, type, off, untitled) }.orEmpty()
 
-    /** Main thread only. */
-    fun selectTrack(type: Int, choice: TrackChoice) {
+    fun selectTrack(type: Int, choice: TrackChoice) = mainHandler.post {
         player?.let { MediaTracks.select(it, type, choice) }
     }
 
