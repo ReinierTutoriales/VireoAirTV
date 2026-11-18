@@ -22,6 +22,12 @@ Replace an implementation only when the alternative improves security, correctne
 
 Renaming, reformatting or moving code to change `git blame` is not a replacement.
 
+## Quality first
+- A change that lowers picture or sound quality is a regression, whatever it saves. The 0.0.2 latency changes degraded mirroring and were reverted; the 720 px cover-art cap was visibly blurry.
+- Prefer a reference implementation over invention: moonlight-android for decoder setup, surface sizing and `Surface.setFrameRate`; UxPlay's README for codec choices (audio-only mode is ALAC, so ALAC is advertised).
+- The mirroring GL blit draws into a buffer the size of the stream (`setFixedSize`), so the display hardware scales once.
+- When a change removes or narrows an old behavior, list every path that relied on it before committing (opening the app only for pictures broke PIN pairing until the PIN was made a reason to open).
+
 ## Avoid repeating failed optimization choices
 - Evaluate codec capabilities independently through `MediaCodecList`/`DecoderSelector`. Do not infer HEVC support from H.264, or efficiency from hardware availability alone.
 - Separate a correctness/resource fix from a measured performance improvement. Name the affected resource and tradeoff.

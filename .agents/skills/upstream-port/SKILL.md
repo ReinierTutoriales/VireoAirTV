@@ -20,7 +20,7 @@ Never move a pin wholesale to a moving branch. Port individual fixes onto our ba
 1. Work in a clone of UxPlay at the pin, on a branch whose base is the pin plus `patches/UxPlay/0001..N`. Confirm that base equals what `applyUxplayPatches` produces (`git diff --cached --stat` must be empty).
 2. `git cherry-pick -x` one upstream commit at a time. On conflict, resolve against our code; never pull in code for features the base lacks (e.g. fields or callbacks that do not exist).
 3. Read every ported diff. Upstream commits can carry defects (wrong printf types, freed pointers in logs, leaks on new error paths, partial loops). Fix them in the port and say so in the commit body.
-4. If a fix needs a missing feature, list it as "not ported" with the reason.
+4. If a fix needs a missing feature, list it as "not ported" with the reason. Before porting a commit, check `origin/master` for later commits that fix it (`dc5ce10` repaired a regression of the NTP rewrite `4bfa594`); port them together or not at all.
 5. Export with `git format-patch --start-number <next>`; check `git apply --unidiff-zero` in order on a fresh worktree of the pin and compare the tree with the branch head.
 6. One patch per commit in VireoAirTV: `uxplay: <upstream subject>`, body names the patch number and the upstream hash.
 

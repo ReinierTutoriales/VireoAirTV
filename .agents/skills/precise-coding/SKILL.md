@@ -27,7 +27,7 @@ Every line must be traceable to existing code or a clearly labeled minimal assum
 
 ## Delivery efficiency
 - Work toward the owner's acceptance criterion, not a sequence of preparation-only commits. Map the minimum complete vertical slice and implement related changes together.
-- Prefer one cohesive multi-file commit over many trivial commits.
+- One cause per commit, with all the files that cause needs. To split a working tree that mixes causes, save the full files, restore the first cause's version, build, commit, then restore the full files; each commit must compile on its own.
 - After changes, report implemented behavior, validation and remaining gaps precisely. Do not call a component integrated merely because it compiles.
 
 ## Single-pass edits
@@ -36,6 +36,14 @@ Every line must be traceable to existing code or a clearly labeled minimal assum
 - Chain shell steps with `&&` or `set -e`. Keep a file's trailing newline when rewriting it.
 - Run every check the session can run before pushing (`git diff --check`, build if available); leave what cannot run to CI and say so.
 - Query the remote (branches, PRs, releases) before stating repository facts; the previous turn is not evidence.
+
+## Verified platform and tooling facts
+- `NewStringUTF` aborts the process on bytes that are not Modified UTF-8; network strings (DACP ids, URLs) are percent-encoded first (`_new_ascii_string`).
+- `KEYCODE_HOME` is never delivered to apps; only Back and media keys can be handled.
+- `SYSTEM_ALERT_WINDOW` still exempts activity starts from the background; Android 15 removed its exemption for starting foreground services. The service runs as `connectedDevice` (allowed from `BOOT_COMPLETED`; its prerequisite is `CHANGE_WIFI_MULTICAST_STATE`).
+- Moving code out of a function annotated `@OptIn(UnstableApi::class)` needs the annotation on the new function, or lint fails with `UnsafeOptInUsageError`.
+- `adb shell` joins its arguments into one remote command line: single-quote values. `adb connect` exits 0 when it fails: check its message. Windows PowerShell 5.1 turns stderr of a native command into a terminating error under `ErrorActionPreference = Stop`.
+- In PowerShell, `curl` is an alias of `Invoke-WebRequest`; use `curl.exe` in copy-paste commands.
 
 ## Professional code, not filler
 - Match the surrounding naming, structure and comment density. Comments state why (contract, platform fact, measured cost), never what the next line does.

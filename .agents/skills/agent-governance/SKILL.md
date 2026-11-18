@@ -30,6 +30,12 @@ Hard constraints that override convenience:
 - Changing `applicationId`, signing, version, or publishing a release requires an explicit owner request.
 - Merging, releasing, closing PRs and deleting branches also require the owner's answer.
 
+## Branches, integration and releases
+- Unreleased work accumulates on one working branch; integrate into `main` and release only when the owner asks. Fast-forward `main` when the working branch already contains it.
+- Release: bump `versionCode`/`versionName` in a `release: X.Y.Z` commit on `main`, then push `release/X.Y.Z`; `apk.yml` builds, signs and publishes `vX.Y.Z` (it also triggers on `v*` tags).
+- Agent sessions cannot push tags, force-push or delete remote branches (the proxy answers 403). Do not retry; give the owner the exact `git push origin --delete ...` command.
+- `git fetch upstream` brings jqssun's tags (a stale `v0.0.5` pointed at his April commit). Before releasing, compare `git tag -l` with `git ls-remote --tags origin` and delete local tags the origin does not have.
+
 ## Long-running jobs
 - After a push, PR, merge or workflow dispatch, do not wait, sleep or poll for CI, releases or other remote jobs. Report the SHA, branch/PR and run link, then end the turn.
 - Read status with one REST call (`commits/{sha}/check-runs`, `actions/runs`) only when the owner asks or when the next action depends on it.
