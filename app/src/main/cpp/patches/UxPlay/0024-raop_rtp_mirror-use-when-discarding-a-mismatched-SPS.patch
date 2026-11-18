@@ -1,0 +1,36 @@
+From ea56fc62f019401129b8aea59c2d1ec51dbdcd55 Mon Sep 17 00:00:00 2001
+From: p <p@p>
+Date: Wed, 18 Nov 2026 05:08:18 -0500
+Subject: [PATCH 24/29] raop_rtp_mirror: use && when discarding a mismatched
+ SPS/PPS; free payload on exit
+
+Ported from upstream 78d73e1 (suggested in part by @boyan01, PR #631):
+'sps_pps_len & (a != b)' only tested the low bit of sps_pps_len, so a stale
+SPS/PPS of even length was prepended to the wrong frame.
+---
+ lib/raop_rtp_mirror.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/lib/raop_rtp_mirror.c b/lib/raop_rtp_mirror.c
+index 8331bb9..ebea51a 100644
+--- a/lib/raop_rtp_mirror.c
++++ b/lib/raop_rtp_mirror.c
+@@ -426,7 +426,7 @@ raop_rtp_mirror_thread(void *arg)
+                  * that has not yet been sent.   This will trigger prepending it to the current NAL, and sps_pps_len 
+                  * will be set to 0 after the sps_pps-prepended packet is finalized.  */
+ 
+-                if (sps_pps_len & (ntp_timestamp_raw != ntp_timestamp_nal)) {
++                if (sps_pps_len && (ntp_timestamp_raw != ntp_timestamp_nal)) {
+                         logger_log(raop_rtp_mirror->logger, LOGGER_DEBUG,
+                                    "raop_rtp_mirror: prepended sps_pps timestamp does not match timestamp of "
+                                    "video payload\n%llu\n%llu , discarding", ntp_timestamp_raw, ntp_timestamp_nal);
+@@ -842,6 +842,9 @@ raop_rtp_mirror_thread(void *arg)
+             }
+         }
+     }
++    if (payload) {
++        free(payload);
++    }
+     /* Close the stream file descriptor */
+     if (stream_fd != -1) {
+         CLOSESOCKET(stream_fd);
