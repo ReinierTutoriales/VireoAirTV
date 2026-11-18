@@ -1,0 +1,42 @@
+From 2170425fe3b5851dd8b19a78b4c0477c4fb6d4ff Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Tue, 28 Jul 2026 10:25:10 -0400
+Subject: [PATCH] add some properties to known-but-unhandled list
+
+(cherry picked from commit 2136fd4db0cedcf3c09cd31f1a30cf3a931bacaa)
+---
+ lib/http_handlers.h | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index 2407f2c..89be2bf 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -188,9 +188,12 @@ http_handler_set_property(raop_conn_t *conn,
+                   1: pause   (pause playing)
+                   2: none    (do nothing)             
+ 
+-        reverseEndTime   (only used when rate < 0) time at which reverse playback ends
+-        forwardEndTime   (only used when rate > 0) time at which reverse playback ends
+-        selectedMediaArray contains plist with language choice:
++        reverseEndTime   (only used when rate < 0) time at which reverse playback ends (sent to reset previous values)
++        forwardEndTime   (only used when rate > 0) time at which reverse playback ends (sent to reset previous values)
++        selectedMediaArray contains plist with language choice
++        interstitialEvents   usually sent to reset any previously registered interstitial events (advertisements)
++        isInterestedInDateRange  indicates #EXT-X-DATERANGE (or #EXT-X-PROGRAM-DATE-TIME) tags may occur in Media playlists
++        textMarkupArray configure subtitle positioning and test renderering properties (data is XML-formatted textMarkupArray)
+     */
+ 
+     airplay_video_t *airplay_video = (airplay_video_t *) hls_get_current_video(raop);
+@@ -276,7 +279,10 @@ http_handler_set_property(raop_conn_t *conn,
+         plist_mem_free(language_code);
+     } else if (!strcmp(property, "reverseEndTime") ||
+         !strcmp(property, "forwardEndTime") ||
+-        !strcmp(property, "actionAtItemEnd")) {
++        !strcmp(property, "actionAtItemEnd") ||
++        !strcmp(property, "interstitialEvents") ||
++        !strcmp(property, "textMarkupArray") ||
++        !strcmp(property, "isInterestedInDateRange")) {
+         logger_log(raop->logger, LOGGER_DEBUG, "property %s is known but unhandled", property);
+ 
+         plist_t errResponse = plist_new_dict();
