@@ -642,23 +642,10 @@ fun MainScreen(
         }
     }
 
-    // pin dialog
-    if (pin != null) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissPin() },
-            title = { Text(stringResource(R.string.dialog_pin_title)) },
-            text = {
-                Text(
-                    text = pin!!,
-                    style = MaterialTheme.typography.displayMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.dismissPin() }) { Text(stringResource(R.string.btn_ok)) }
-            }
-        )
+    // full screen, as Apple TV shows its AirPlay code; Back or OK dismisses it
+    pin?.let { code ->
+        BackHandler { viewModel.dismissPin() }
+        AirPlayPinScreen(code, onDismiss = { viewModel.dismissPin() })
     }
 
 }

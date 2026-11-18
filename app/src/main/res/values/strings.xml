@@ -44,6 +44,7 @@
     <string name="cd_cover_art">Cover art</string>
     <string name="cd_play_pause">Play/Pause</string>
     <string name="cd_previous">Previous</string>
+    <string name="pin_instructions">Enter this code on your iPhone, iPad or Mac</string>
     <string name="cd_next">Next</string>
     <string name="cd_rewind">Rewind</string>
     <string name="cd_fast_forward">Fast forward</string>
