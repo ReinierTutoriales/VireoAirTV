@@ -1,0 +1,26 @@
+From 7d4ce0d4f95f0a342c58de6bdb8bd96e51c56dcf Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:16:56 -0500
+Subject: [PATCH] fairplay: reject key modes past the reply table
+
+fairplay_setup() indexed reply_message[4] with req[14] from the network, unchecked, and copied 142 bytes from there into the reply. A /fp-setup request with mode 200 read far outside the table and sent that memory back to the client (ASan: global-buffer-overflow); no pairing is needed to reach it. Upstream added the same check in 6ab8bf6 (FairPlay v2).
+---
+ lib/fairplay_playfair.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/lib/fairplay_playfair.c b/lib/fairplay_playfair.c
+index 2a72fdf..6e97d8e 100644
+--- a/lib/fairplay_playfair.c
++++ b/lib/fairplay_playfair.c
+@@ -50,8 +50,9 @@ fairplay_setup(fairplay_t *fp, const unsigned char req[16], unsigned char res[14
+ {
+     assert(fp);
+ 
+-    if (req[4] != 0x03) {
+-        /* Unsupported fairplay version */
++    /* req[14] (the key mode, from the network) indexes reply_message[4] */
++    if (req[4] != 0x03 || req[14] >= 4) {
++        /* Unsupported fairplay version or mode */
+         return -1;
+     }
+ 
