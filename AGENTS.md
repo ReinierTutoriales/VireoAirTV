@@ -5,7 +5,7 @@ AirPlay receiver for Android TV, independent of the VireoLumaTV browser. Derived
 
 ## Stack (versions live in `gradle/libs.versions.toml`)
 - Kotlin + Jetpack Compose, Hilt, Media3 (ExoPlayer HLS, MediaSession via `SessionPlayer`), Oboe, MediaCodec.
-- Native: UxPlay, libplist, OpenSSL, FFmpeg (ALAC only) as Git submodules; CMake + NDK 30; JNI bridge in `app/src/main/cpp/`.
+- Native: UxPlay, libplist, OpenSSL 4.1, FFmpeg 9 (ALAC/AAC only) as Git submodules; CMake 4.1.2 + NDK 30; JNI bridge in `app/src/main/cpp/`.
 - compileSdk/targetSdk 37, minSdk 24. ABIs: arm64-v8a, armeabi-v7a, x86_64. Module: `:app`.
 
 ## Build
