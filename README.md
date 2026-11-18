@@ -17,115 +17,109 @@ No reproduce contenido con DRM de Apple (app Apple TV, Netflix y similares). Esa
 
 ## Instalación
 
-La forma recomendada usa un ordenador con ADB y el script de aprovisionamiento. Así la app queda con todos los permisos, arranca sola al encender la tele y puede pasar al frente cuando proyectas. Solo hay que hacerlo una vez.
+Se hace una vez desde un ordenador en la misma red que la tele. Al terminar, la app arranca sola al encender la tele y pasa al frente cuando proyectas.
 
-### Qué necesitas
+### Paso 1. Instala ADB en el ordenador
 
-- Una tele o reproductor con Android TV o Google TV, Android 7.0 o superior.
-- Un ordenador con Windows, macOS o Linux en la misma red que la tele.
-- El iPhone, iPad o Mac conectado también a esa red.
-
-### 1. Instala ADB en el ordenador
-
-| Sistema | Comando |
-|---|---|
-| Windows | `winget install --id Google.PlatformTools -e` y cierra y vuelve a abrir la terminal |
-| macOS | `brew install --cask android-platform-tools` |
-| Debian, Ubuntu | `sudo apt install adb` |
-| Fedora | `sudo dnf install android-tools` |
-| Arch | `sudo pacman -S android-tools` |
-
-Comprueba que funciona con `adb version`. También puedes descargar las [Platform-Tools oficiales](https://developer.android.com/tools/releases/platform-tools) y descomprimirlas.
-
-### 2. Activa la depuración en la tele
-
-1. Ve a **Ajustes > Sistema > Información** y pulsa 7 veces seguidas sobre **Compilación del SO de Android TV** hasta que aparezca el aviso de que ya eres desarrollador. En algunos modelos está en **Preferencias del dispositivo > Información**.
-2. Vuelve atrás y entra en **Opciones para desarrolladores**.
-3. Activa **Depuración inalámbrica** si aparece (Android TV 13 o superior). Si no, activa **Depuración USB** y, si existe, **Depuración por red**.
-4. Anota la IP de la tele. Aparece en la pantalla de Depuración inalámbrica o en **Ajustes > Red e Internet**, dentro de la red a la que está conectada.
-
-### 3. Conecta el ordenador con la tele
-
-**Con Depuración inalámbrica.** En la tele, dentro de Depuración inalámbrica, elige **Vincular dispositivo con un código**. Muestra una IP con un puerto de vinculación y un código de 6 cifras. En el ordenador:
-
-```bash
-adb pair 192.168.1.50:37001        # IP y puerto de vinculación; pide el código
-adb connect 192.168.1.50:41235     # IP y puerto de conexión de la pantalla principal de Depuración inalámbrica
-```
-
-Los dos puertos son distintos y cambian cada vez que se activa la depuración: usa los que muestre tu tele.
-
-**Con Depuración USB o por red.**
-
-```bash
-adb connect 192.168.1.50:5555
-```
-
-En la tele aparece **¿Permitir depuración?**. Marca **Permitir siempre desde este ordenador** y acepta.
-
-Comprueba la conexión con `adb devices`. La tele debe aparecer como `device`; si aparece `unauthorized`, acepta el aviso en la tele.
-
-### 4. Descarga la APK y el script
-
-En macOS o Linux:
-
-```bash
-curl -LO https://github.com/ReinierTutoriales/VireoAirTV/releases/latest/download/app-release.apk
-curl -LO https://raw.githubusercontent.com/ReinierTutoriales/VireoAirTV/main/scripts/provision.sh
-```
-
-En Windows (PowerShell):
+Windows (después, cierra y vuelve a abrir la terminal):
 
 ```powershell
-Invoke-WebRequest https://github.com/ReinierTutoriales/VireoAirTV/releases/latest/download/app-release.apk -OutFile app-release.apk
-Invoke-WebRequest https://raw.githubusercontent.com/ReinierTutoriales/VireoAirTV/main/scripts/provision.ps1 -OutFile provision.ps1
+winget install --id Google.PlatformTools -e
 ```
 
-### 5. Instala y aprovisiona
-
-Usa la IP y el puerto con los que conectaste en el paso 3. El último argumento es el nombre que verá el iPhone; es opcional.
+macOS:
 
 ```bash
-bash provision.sh 192.168.1.50:5555 app-release.apk "Salón"
+brew install --cask android-platform-tools
+```
+
+Debian o Ubuntu:
+
+```bash
+sudo apt install adb
+```
+
+Fedora:
+
+```bash
+sudo dnf install android-tools
+```
+
+Arch:
+
+```bash
+sudo pacman -S android-tools
+```
+
+### Paso 2. Activa la depuración en la tele
+
+1. **Ajustes > Sistema > Información** (en algunas teles, **Preferencias del dispositivo > Información**): pulsa 7 veces **Compilación del SO de Android TV** hasta que diga que ya eres desarrollador.
+2. Vuelve atrás, entra en **Opciones para desarrolladores** y activa **Depuración inalámbrica** o, si no aparece, **Depuración USB**.
+3. Apunta la IP de la tele: sale en la pantalla de Depuración inalámbrica o en **Ajustes > Red e Internet**.
+
+Si tu tele usa **Depuración inalámbrica**, vincúlala una vez con el código de **Vincular dispositivo con un código** (usa la IP y el puerto de esa pantalla):
+
+```bash
+adb pair 192.168.1.50:37001
+```
+
+### Paso 3. Instala VireoAirTV
+
+Cambia la IP de la primera línea por la de tu tele y copia el bloque entero. Con Depuración USB el puerto es `5555`; con Depuración inalámbrica, el que muestra la pantalla principal de esa opción.
+
+macOS o Linux:
+
+```bash
+TV=192.168.1.50:5555
+curl -fLO https://github.com/ReinierTutoriales/VireoAirTV/releases/latest/download/app-release.apk
+curl -fLO https://raw.githubusercontent.com/ReinierTutoriales/VireoAirTV/main/scripts/provision.sh
+bash provision.sh $TV app-release.apk
+```
+
+Windows (PowerShell):
+
+```powershell
+$TV = "192.168.1.50:5555"
+curl.exe -fLO https://github.com/ReinierTutoriales/VireoAirTV/releases/latest/download/app-release.apk
+curl.exe -fLO https://raw.githubusercontent.com/ReinierTutoriales/VireoAirTV/main/scripts/provision.ps1
+powershell -ExecutionPolicy Bypass -File .\provision.ps1 -Target $TV -ApkPath app-release.apk
+```
+
+La primera vez la tele pregunta **¿Permitir depuración?**: marca **Permitir siempre** y acepta. El script espera a que lo hagas.
+
+El script instala la app, concede todos los permisos sin diálogos, la excluye del ahorro de energía, activa el arranque al encender y el audio ALAC, y deja la tele en su pantalla de inicio.
+
+### Paso 4. Proyecta
+
+En el iPhone: **Centro de control > Duplicar pantalla >** el nombre de la tele. Para música o vídeo, usa el icono de AirPlay dentro de la app.
+
+Ya puedes desactivar la depuración en la tele; los permisos y ajustes se mantienen.
+
+### Cambiar el nombre de la tele
+
+Añade el nombre al final del comando del paso 3:
+
+```bash
+bash provision.sh $TV app-release.apk "Salón"
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\provision.ps1 -Target 192.168.1.50:5555 -ApkPath app-release.apk -ServerName "Salón"
+powershell -ExecutionPolicy Bypass -File .\provision.ps1 -Target $TV -ApkPath app-release.apk -ServerName "Salón"
 ```
-
-El script:
-
-- instala la APK y concede los permisos de notificaciones y de red local, sin diálogos en la tele;
-- concede el permiso de superposición para que la app pueda pasar al frente;
-- excluye la app del ahorro de energía para que no se duerma esperando al iPhone;
-- activa el arranque al encender, la ejecución en segundo plano, la apertura al recibir imagen y el audio ALAC;
-- deja la tele en su pantalla de inicio.
-
-Si algún paso falla, el script se detiene y muestra el error. Si un permiso no se puede conceder, avisa y sigue.
-
-### 6. Pruébalo
-
-En el iPhone abre el **Centro de control**, pulsa **Duplicar pantalla** y elige el nombre de la tele. La tele mostrará la pantalla del iPhone y volverá sola a donde estabas al dejar de proyectar. Para música o vídeo, usa el icono de AirPlay dentro de la app.
-
-Cuando todo funcione puedes desactivar la depuración en la tele: los permisos y ajustes se mantienen.
 
 ### Actualizar
 
-Descarga la nueva APK y repite el paso 5 con el mismo comando. Se conservan los ajustes.
+Repite el paso 3. Descarga la última versión y conserva tus ajustes.
 
 ### Sin ordenador
 
-Puedes instalar `app-release.apk` con una app como Downloader o enviándola a la tele, después de permitir instalar apps de origen desconocido. El receptor funciona igual, pero la app no podrá pasar al frente sola si tu tele no ofrece el permiso **Mostrar sobre otras apps** en **Ajustes > Apps > Acceso especial de apps**. En ese caso aparece una notificación para abrirla.
+Instala `app-release.apk` con una app como Downloader. Funciona igual, pero si tu tele no ofrece **Mostrar sobre otras apps** en **Ajustes > Apps > Acceso especial de apps**, la app no podrá pasar al frente sola y te avisará con una notificación.
 
 ### Si algo falla
 
-| Síntoma | Solución |
-|---|---|
-| El iPhone no ve la tele | Comprueba que están en la misma red (no en la de invitados) y que el router no aísla los dispositivos ni bloquea multicast. Abre la app una vez para confirmar que el receptor está activo. |
-| `adb connect` no responde | Revisa la IP y el puerto en la pantalla de depuración de la tele; con Depuración inalámbrica, vuelve a vincular con `adb pair`. |
-| `adb devices` muestra `unauthorized` | Acepta el aviso de depuración en la tele. |
-| La app no pasa al frente al proyectar | Vuelve a ejecutar el script: concede el permiso de superposición. |
-| PowerShell no deja ejecutar el script | Ejecútalo con `powershell -ExecutionPolicy Bypass -File .\provision.ps1 ...` como en el paso 5. |
+- **El iPhone no ve la tele:** deben estar en la misma red (no en la de invitados) y el router no debe aislar los dispositivos.
+- **`adb connect` no responde:** revisa IP y puerto en la tele; con Depuración inalámbrica el puerto cambia cada vez que se activa.
+- **La app no pasa al frente al proyectar:** vuelve a ejecutar el paso 3.
 
 ## Ajustes por ADB
 
