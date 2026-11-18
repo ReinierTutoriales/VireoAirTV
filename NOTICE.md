@@ -2,6 +2,10 @@
 
 VireoAirTV is derived from [jqssun/android-airplay-server](https://github.com/jqssun/android-airplay-server), licensed under GPL-3.0 (see `LICENSE`). Native components keep their own licenses inside their submodules: UxPlay, libplist, OpenSSL and FFmpeg.
 
+## FairPlay v2
+
+UxPlay patch 0046 adds `lib/fairplay_v2/` by Omar Roth (LGPL-2.1-or-later), merged upstream in UxPlay commit 6ab8bf6. It lets macOS Music stream to the receiver.
+
 ## Code from CastBay
 
 `renderer/HevcSelfTest.kt` with `app/src/main/assets/hevc_selftest.h265`, and `renderer/MediaTracks.kt`, are ported from [CastBay](https://github.com/weenas/castbay) by Weenas (GPL-3.0): `service/HevcSelfTest.kt` with its asset and `service/MediaTracks.kt`.

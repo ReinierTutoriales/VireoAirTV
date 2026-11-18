@@ -102,6 +102,7 @@ set(AIRPLAY_SOURCES
     ${UXPLAY_LIB}/compat.c
     ${UXPLAY_LIB}/crypto.c
     ${UXPLAY_LIB}/fairplay_playfair.c
+    ${UXPLAY_LIB}/fairplay_v2/fairplay_v2.c
     ${UXPLAY_LIB}/http_request.c
     ${UXPLAY_LIB}/http_response.c
     ${UXPLAY_LIB}/httpd.c
