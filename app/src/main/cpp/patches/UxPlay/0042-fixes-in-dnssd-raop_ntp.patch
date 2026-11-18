@@ -1,0 +1,50 @@
+From 4fee153a35a39ffb0a3e876bd90341d331364f8f Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Sun, 1 Nov 2026 02:20:42 -0500
+Subject: [PATCH 42/43] fixes in dnssd raop_ntp
+
+(cherry picked from commit 02306026e1eaee58e09bbb2d824b5a1c97872680)
+---
+ lib/dnssd.c    | 4 ++--
+ lib/raop_ntp.c | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/lib/dnssd.c b/lib/dnssd.c
+index d041ee7..3ad7c9d 100644
+--- a/lib/dnssd.c
++++ b/lib/dnssd.c
+@@ -495,10 +495,10 @@ void dnssd_set_airplay_features(dnssd_t *dnssd, int bit, int val) {
+     if (bit < 0 || bit > 63) return;
+     if (val < 0 || val > 1) return;
+     if (bit >= 32) {
+-        mask = 0x1 << (bit - 32);
++        mask = 0x1U << (bit - 32);
+         features = &(dnssd->features2);
+     } else {
+-        mask = 0x1 << bit;
++        mask = 0x1U << bit;
+         features = &(dnssd->features1);
+     }
+     if (val) {
+diff --git a/lib/raop_ntp.c b/lib/raop_ntp.c
+index e0c8873..8172baa 100644
+--- a/lib/raop_ntp.c
++++ b/lib/raop_ntp.c
+@@ -665,7 +665,7 @@ raop_ntp_thread(void *arg) {
+ 
+                 // Local timestamp of the client when the response message left the client  (should not equal t3_prev)
+                 t3_raw = (q32_32_t) byteutils_get_long_be(response, 24);
+-                byteutils_put_long_be(request, 8, (uint32_t) t3_raw);   //this is returned to client as client_ref
++                byteutils_put_long_be(request, 8, t3_raw);   //this is returned to client as client_ref
+                 /* now adjust t3 to reset client epoch : don't include SECONDS_1900_TO_1970 */
+                 t3 = raop_ntp_adjust_remote_timestamp_offset(raop_ntp, t3_raw, false);
+ 
+@@ -1023,7 +1023,7 @@ uint64_t raop_ntp_convert_local_time(raop_ntp_t *raop_ntp, uint64_t local_time)
+ q32_32_t raop_ntp_adjust_remote_timestamp_offset(raop_ntp_t *raop_ntp, q32_32_t ntp_timestamp_raw, bool add_secs_1900_to_1970) {
+     int64_t timestamp = (int64_t) ntp_timestamp_raw;
+     if (add_secs_1900_to_1970) {
+-        timestamp += ((int64_t) 2208988800ULL) << 32;
++        timestamp += (int64_t) (2208988800ULL << 32);
+     }
+     bool set_fixed_offset = false;
+     if (!raop_ntp->have_fixed_offset) {
