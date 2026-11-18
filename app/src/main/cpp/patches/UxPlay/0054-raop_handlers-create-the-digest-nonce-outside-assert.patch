@@ -1,0 +1,27 @@
+From 343b6d258e43ff07e534b64b741fd0db5a188165 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:12:24 -0500
+Subject: [PATCH 54/55] raop_handlers: create the digest nonce outside assert()
+
+pairing_session_make_nonce() was called inside assert(), so release builds (NDEBUG, as AGP's RelWithDebInfo) never created the nonce and password authentication sent an empty one. Upstream removed the same assert in 120a166, which does not apply on our pin.
+---
+ lib/raop_handlers.h | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/lib/raop_handlers.h b/lib/raop_handlers.h
+index 7f25efa..0d63ab1 100644
+--- a/lib/raop_handlers.h
++++ b/lib/raop_handlers.h
+@@ -745,7 +745,11 @@ raop_handler_setup(raop_conn_t *conn,
+                     unsigned char nonce[16] = { '\0' };
+                     int len = 16;
+                     uint64_t now = raop_ntp_get_local_time();
+-                    assert (!pairing_session_make_nonce(conn->session, &now, url, nonce, len));
++                    /* not inside assert(): release builds (NDEBUG) dropped the call and sent an empty nonce */
++                    int nonce_ret = pairing_session_make_nonce(conn->session, &now, url, nonce, len);
++                    if (nonce_ret) {
++                        logger_log(raop->logger, LOGGER_ERR, "failed to create the authentication nonce");
++                    }
+                     if (raop->nonce) {
+                         free(raop->nonce);
+                     }
