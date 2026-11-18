@@ -68,9 +68,26 @@ desde esa base y se aplican en orden con `git apply --unidiff-zero`.
 - `412c5b7` (volumen): la parte de `lib/` ya está cubierta por el parche 0006; el resto es GStreamer.
 - Reescritura de NTP, FairPlay v2, filtro de códecs HLS: dependen del cambio de API de `master`.
 
+## Segunda pasada: seguridad y dependencias (2026-11-18)
+| Hallazgo | Clase | Acción |
+|---|---|---|
+| libplist: un bplist de 1 MB con 2000 referencias a un dato de 1 MB pide ~2 GB (reproducido en host) | Defecto probado, alcanzable desde la LAN sin emparejar | `patches/libplist/0001`: tope de 4× la entrada + 1 MiB |
+| UxPlay `http_request.c`: URL, cabeceras y cuerpo crecen sin límite | Defecto probado | Parche 0030: 64 KiB de cabecera, 32 MiB de cuerpo |
+| `NewStringUTF` con DACP-ID, Active-Remote y URL de `/play` del emisor: bytes no Modified UTF-8 abortan el proceso | Exposición (depende de bytes no ASCII del emisor) | Codificación `%XX` en `android_raop_callbacks.c` |
+| OpenSSL se descargaba de `mirror.viaduck.org` sin hash | Cadena de suministro | `OPENSSL_BUILD_HASH` con el SHA256 oficial de 4.1.0 |
+| FFmpeg `release/9.0`: correcciones del decodificador AAC tras 9.0.2 (`4cf298e66a`, `c89d6ee1ca`, `2a571b6068`) | Correcciones upstream | Pin a `d838f9f9ae` |
+| OpenSSL, aviso del 10-11-2026 (QUIC, AES-GCM-SIV, CMS) | No aplica: solo usamos AES-CBC/CTR/GCM, SHA y MD5 | Pasar a 4.1.1 cuando salga (programada para el 1-12-2026) |
+| CVE-2025-60458 (UxPlay 1.72, doble free en TEARDOWN) | Corregido en 1.73.3; el pin es 1.73.7 | Ninguna |
+| UxPlay PR #625 (User-Agent AppleCoreMedia) | Mejora | Aplicado al `DataSource` HTTP de ExoPlayer; la descarga (`VideoDownloader`) no lo usa todavía |
+| Dependencias Gradle | Todas en la última estable (Maven, 2026-11-18) | Ninguna |
+
+Riesgo abierto: el timeout de 60 s (parche 0013) también cierra el canal EVENT inactivo. Si el vídeo HLS
+falla tras una pausa larga, es el primer sospechoso.
+
 ## Verificado
-`assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug` y `assembleSanitize`
-pasan. Comportamiento en TV: pendiente de validación física.
+`assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
+`scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.
 
 ## Pendiente
-- User-Agent AppleCoreMedia en el `DataSource` HTTP de ExoPlayer (equivalente a #625).
+- OpenSSL 4.1.1 (1-12-2026).
+- User-Agent en `VideoDownloader`.
