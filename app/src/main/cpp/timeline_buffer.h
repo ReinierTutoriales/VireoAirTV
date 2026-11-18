@@ -337,6 +337,7 @@ public:
     void flushAndReprime() {
         mRing.skip(mRing.available());
         mPriming = true;
+        mFlushRequested.store(false, std::memory_order_relaxed);  // already done here
     }
 
     // debug snapshot: backlog + tuned cushion (ms) + counters; reads only atomics, any thread
