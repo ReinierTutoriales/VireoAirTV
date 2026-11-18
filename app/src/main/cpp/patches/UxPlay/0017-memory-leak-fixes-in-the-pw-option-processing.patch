@@ -1,0 +1,57 @@
+From d6d0965b5e1de3510c366f726c9dad7934146dcd Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Sun, 25 Oct 2026 14:25:01 -0400
+Subject: [PATCH 17/29] memory leak fixes in the -pw option processing
+
+(Also a cosmetic fix in a SETUP 1 debug message)
+
+(cherry picked from commit bced29377447917303df5d8002873ea483a54612)
+---
+ lib/pairing.c       | 4 +++-
+ lib/raop_handlers.h | 9 +++++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/lib/pairing.c b/lib/pairing.c
+index c83200e..81a8df5 100644
+--- a/lib/pairing.c
++++ b/lib/pairing.c
+@@ -198,16 +198,18 @@ pairing_session_get_public_key(pairing_session_t *session, unsigned char ecdh_ke
+ int
+ pairing_session_make_nonce(pairing_session_t *session, uint64_t *local_time, const char *client_data, unsigned char *nonce, int len)  {
+     unsigned char hash[SHA512_DIGEST_LENGTH];
++    unsigned char ed_ours[ED25519_KEY_SIZE];
+     if (len > (int) sizeof(hash)) {
+       return -1;
+     }
+     if (!client_data || !local_time || !session || !nonce || len <= 0) {
+       return -2;
+     }
++    ed25519_key_get_raw(ed_ours, session->ed_ours);
+     sha_ctx_t *ctx = sha_init();
+     sha_update(ctx, (const unsigned char *) local_time, sizeof(uint64_t));
+     sha_update(ctx, (const unsigned char *) client_data, strlen(client_data));
+-    sha_update(ctx, (const unsigned char *) session->ed_ours, ED25519_KEY_SIZE);
++    sha_update(ctx, (const unsigned char *) ed_ours, ED25519_KEY_SIZE);
+     sha_final(ctx, hash, NULL);
+     sha_destroy(ctx);
+     memcpy(nonce, hash, len);
+diff --git a/lib/raop_handlers.h b/lib/raop_handlers.h
+index bf72698..dfaae1a 100644
+--- a/lib/raop_handlers.h
++++ b/lib/raop_handlers.h
+@@ -739,6 +739,15 @@ raop_handler_setup(raop_conn_t *conn,
+                     strncat(response_text, "\"", 80 - strlen(response_text) - 1);
+                     http_response_init(response, "RTSP/1.0", 401, "Unauthorized");
+                     http_response_add_header(response, "WWW-Authenticate", response_text);
++                    if (req_root_node) {
++                        plist_free(req_root_node);
++                    }
++                    if (res_root_node) {
++                        plist_free(res_root_node);
++                    }
++                    if (deviceID) {
++                        plist_mem_free(deviceID);
++                    }
+                     return;
+                 }
+             }
