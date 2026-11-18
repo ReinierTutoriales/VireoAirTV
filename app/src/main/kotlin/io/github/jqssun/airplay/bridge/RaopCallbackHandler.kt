@@ -12,6 +12,8 @@ interface RaopCallbackHandler {
     fun onConnectionInit()
     fun onConnectionDestroy()
     fun onConnectionReset(reason: Int)
+    // client heartbeat (POST /feedback), about every 2 s while a client is connected
+    fun onConnectionFeedback()
     fun onDisplayPin(pin: String)
     fun onMetadata(data: ByteArray)
     fun onCoverArt(data: ByteArray)

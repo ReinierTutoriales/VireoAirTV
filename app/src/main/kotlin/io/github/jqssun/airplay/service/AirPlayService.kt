@@ -266,6 +266,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        _mainHandler.postDelayed(_feedbackWatchdog, FEEDBACK_CHECK_MS)
         dacpController = DacpController(this)
         dacpPlayer = DacpPlayer(
             mainLooper,
@@ -718,6 +719,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onDestroy() {
+        _mainHandler.removeCallbacks(_feedbackWatchdog)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
         stopServer()
         dacpPlayer.release()
@@ -895,6 +897,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onConnectionInit() {
+        _lastFeedbackNs = System.nanoTime()
         _connectionCount.value++
         log("Sender connected (${_connectionCount.value})")
     }
@@ -932,7 +935,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onConnectionReset(reason: Int) {
+        // native mirror thread: the restart joins that thread, so it has to run elsewhere
         log("Connection reset: $reason")
+        _mainHandler.post { if (_connectionCount.value > 0) _restartServer() }
+    }
+
+    override fun onConnectionFeedback() {
+        _lastFeedbackNs = System.nanoTime()
+    }
+
+    // a client that stops sending /feedback is gone (sleep, Wi-Fi lost, out of range): its last frame
+    // would stay on screen and block new senders, so drop it after the same limit as UxPlay (-reset 15)
+    @Volatile private var _lastFeedbackNs = 0L
+    private val _feedbackWatchdog = object : Runnable {
+        override fun run() {
+            val silentMs = (System.nanoTime() - _lastFeedbackNs) / 1_000_000
+            if (_connectionCount.value > 0 && silentMs > MISSED_FEEDBACK_LIMIT_MS) {
+                log("No feedback from the client for ${silentMs / 1000} s; dropping it")
+                _restartServer()
+            }
+            _mainHandler.postDelayed(this, FEEDBACK_CHECK_MS)
+        }
     }
 
     override fun onDisplayPin(pin: String) {
@@ -1364,6 +1387,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val CLIENT_VOL_EPS = 0.033f
         private const val CLIENT_VOL_MAX_STEPS = 32
         private const val CLIENT_VOL_TIMEOUT_MS = 800L
+        private const val MISSED_FEEDBACK_LIMIT_MS = 15_000L
+        private const val FEEDBACK_CHECK_MS = 1_000L
         private const val CHANNEL_ID = "airplay_service"
         private const val CHANNEL_ALERTS_ID = "airplay_alerts"
         private const val NOTIFICATION_ID = 1

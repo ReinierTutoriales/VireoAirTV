@@ -82,6 +82,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->on_conn_init = (*env)->GetMethodID(env, cls, "onConnectionInit", "()V");
     ctx->on_conn_destroy = (*env)->GetMethodID(env, cls, "onConnectionDestroy", "()V");
     ctx->on_conn_reset = (*env)->GetMethodID(env, cls, "onConnectionReset", "(I)V");
+    ctx->on_conn_feedback = (*env)->GetMethodID(env, cls, "onConnectionFeedback", "()V");
     ctx->on_display_pin = (*env)->GetMethodID(env, cls, "onDisplayPin", "(Ljava/lang/String;)V");
     ctx->on_metadata = (*env)->GetMethodID(env, cls, "onMetadata", "([B)V");
     ctx->on_coverart = (*env)->GetMethodID(env, cls, "onCoverArt", "([B)V");
@@ -222,7 +223,13 @@ static void _display_pin(void *cls, char *pin) {
 static void _noop(void *cls) { (void)cls; }
 static void _video_pause(void *cls) { LOGI("video_pause"); }
 static void _video_resume(void *cls) { LOGI("video_resume"); }
-static void _conn_feedback(void *cls) { (void)cls; }
+/* client heartbeat (POST /feedback, about every 2 s): the service drops a client that stops sending it */
+static void _conn_feedback(void *cls) {
+    android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
+    JNIEnv *env = _get_env(ctx);
+    if (!env) return;
+    (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_conn_feedback);
+}
 static void _video_stop(void *cls);
 static void _video_reset(void *cls, reset_type_t t) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
