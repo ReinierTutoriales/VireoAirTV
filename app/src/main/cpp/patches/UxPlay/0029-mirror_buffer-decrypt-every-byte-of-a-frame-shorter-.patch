@@ -1,0 +1,46 @@
+From 54d8e85295d2765a9f5cd0592a19950184c39e90 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 05:12:05 -0500
+Subject: [PATCH 29/29] mirror_buffer: decrypt every byte of a frame shorter
+ than the leftover keystream
+
+Upstream b1be2bd returned after the first byte when inputLen < nextDecryptCount,
+leaving the rest of the frame undecrypted. Apple senders never hit this path.
+---
+ lib/mirror_buffer.c | 21 ++++++++++-----------
+ 1 file changed, 10 insertions(+), 11 deletions(-)
+
+diff --git a/lib/mirror_buffer.c b/lib/mirror_buffer.c
+index 8382662..3430365 100644
+--- a/lib/mirror_buffer.c
++++ b/lib/mirror_buffer.c
+@@ -93,19 +93,18 @@ mirror_buffer_init(logger_t *logger, const unsigned char *aeskey)
+ 
+ void mirror_buffer_decrypt(mirror_buffer_t *mirror_buffer, unsigned char* input, unsigned char* output, int inputLen) {
+     // Start decrypting
+-    if (mirror_buffer->nextDecryptCount > 0) {//mirror_buffer->nextDecryptCount = 10
++    if (mirror_buffer->nextDecryptCount > 0) {
++        /* consume only as much leftover keystream as this frame is long; keep the
++         * unused suffix for the next frame so AES-CTR stays in sync (third-party
++         * senders can send frames shorter than the leftover). */
+         int n = mirror_buffer->nextDecryptCount;
+-        int m = (n < inputLen ? n :inputLen);
+-        for (int i = 0; i < mirror_buffer->nextDecryptCount; i++) {
++        int m = (n < inputLen ? n : inputLen);
++        for (int i = 0; i < m; i++) {
+             output[i] = (input[i] ^ mirror_buffer->og[(16 - n) + i]);
+-            // if less than one full frame has arrived, place data in buffer, and wait
+-            // for rest to come without starting decryption.
+-            // not usual with real Apple clients, but needed for
+-            // some third-party clients. 
+-            if (m < n) {
+-                mirror_buffer->nextDecryptCount = n - m;
+-                return;
+-            }
++        }
++        if (m < n) {
++            mirror_buffer->nextDecryptCount = n - m;
++            return;
+         }
+     }
+     // Handling encrypted bytes
