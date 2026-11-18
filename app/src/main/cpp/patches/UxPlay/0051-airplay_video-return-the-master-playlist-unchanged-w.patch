@@ -1,0 +1,28 @@
+From 72bdaa3070418d644d813b2c4b0d41d8b31e8e2f Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:57:11 -0500
+Subject: [PATCH 51/52] airplay_video: return the master playlist unchanged
+ when no URI matches
+
+adjust_master_playlist() copies data only while it finds the remote prefix. A master with relative media URIs got a malloc'd buffer that was never filled: junk or an empty reply (jqssun/android-airplay-server#79).
+---
+ lib/airplay_video.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/lib/airplay_video.c b/lib/airplay_video.c
+index 6f0d797..c46c272 100644
+--- a/lib/airplay_video.c
++++ b/lib/airplay_video.c
+@@ -852,6 +852,12 @@ char *adjust_master_playlist (char *fcup_response_data, int fcup_response_datale
+     char *first = fcup_response_data;
+     char *new = new_master;
+     char *last = strstr(first, uri_prefix);
++    if (last == NULL) {
++        /* no absolute URI with this prefix (e.g. relative media URIs): the loop below copies
++           nothing, and the caller got an uninitialized buffer */
++        memcpy(new_master, fcup_response_data, fcup_response_datalen);
++        return new_master;
++    }
+     counter  = 0;
+     while (last != NULL) {
+         counter++;
