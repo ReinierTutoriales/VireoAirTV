@@ -178,5 +178,6 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
+    // Robolectric launches the test ComponentActivity from the merged debug manifest (documented Compose test setup); release is unaffected
     debugImplementation(libs.compose.ui.test.manifest)
 }

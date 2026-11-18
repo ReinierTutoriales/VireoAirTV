@@ -46,12 +46,18 @@ class NowPlayingTvScreenshotTest {
     @Test @Config(qualifiers = "w960dp-h540dp-land-xhdpi")
     fun noArtwork_1080p() = shot("now_playing_1080p_no_art", state.copy(artwork = null, album = ""), controls = false)
 
+    @Test @Config(qualifiers = "w411dp-h891dp-port-xxhdpi")
+    fun phonePortrait() = shot("now_playing_phone_portrait", state, controls = true)
+
     @Test @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
     fun playing_720p() = shot("now_playing_720p", state, controls = false)
 
     private fun shot(name: String, s: NowPlayingState, controls: Boolean, focusPlay: Boolean = false) {
         val focus = FocusRequester()
         compose.setContent {
+            // the TV remote puts the window in keyboard mode, where a clickable takes focus
+            val inputMode = androidx.compose.ui.platform.LocalInputModeManager.current
+            androidx.compose.runtime.SideEffect { inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard) }
             NowPlayingTv(s, controlsVisible = controls, onPrevious = {}, onPlayPause = {}, onNext = {}, playPauseFocus = focus)
         }
         if (focusPlay) {
