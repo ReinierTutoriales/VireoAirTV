@@ -32,6 +32,7 @@ Never move a pin wholesale to a moving branch. Port individual fixes onto our ba
 ## Improve, don't only copy
 A port is the floor. Before closing a pass, look at our own code with the same tools that found the upstream bugs:
 - Read every upstream diff for the bug class it fixes and look for the same class elsewhere: the FairPlay v2 merge fixed `req[14]`; the same unchecked mode byte was also in the handshake (`req[12]`, patch 0045), unreported upstream.
+- Run `scripts/fuzz.sh` (libFuzzer, ASan/UBSan) after any change to code that reads sender data, and add a target when a new parser appears. Code the fuzzer cannot reach (parsers inside socket loops, such as `raop_rtp_mirror.c`) gets a manual pass: every length, offset and count from the network checked against the received size before use.
 - Run the native code under ASan/UBSan with random input and fix what it reports. A refactor of crypto or codec code needs a differential test: identical output before and after on many random inputs, and a known-answer value kept in the test (patch 0047).
 - Trace the hot path end to end (network -> decoder -> display) and question each wait: decoder output drained only when the next input arrived added one frame of latency (`VideoRenderer` drain thread).
 - Do not report a performance problem without proof: the playfair `printf` calls looked costly but compile to nothing (`#define printf(...)`).
