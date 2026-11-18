@@ -1060,7 +1060,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _updateMediaNotification()
     }
 
-    private var _localPauseAt = Long.MIN_VALUE / 2
+    // written on the main thread, read on native callback threads (onProgress, onAudioFormat)
+    @Volatile private var _localPauseAt = Long.MIN_VALUE / 2
 
     // play/pause from the TV (remote, notification, media session), not from the sender
     private fun _userSetPlaying(playing: Boolean) {
