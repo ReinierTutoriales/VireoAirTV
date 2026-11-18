@@ -465,6 +465,10 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     fun videoTrackChoices(type: Int, off: String, untitled: (Int) -> String): List<TrackChoice> =
         service?.videoTrackChoices(type, off, untitled).orEmpty()
 
+    fun forgetTrustedClients() {
+        service?.forgetTrustedClients()
+    }
+
     fun selectVideoTrack(type: Int, choice: TrackChoice) {
         service?.selectVideoTrack(type, choice)
     }

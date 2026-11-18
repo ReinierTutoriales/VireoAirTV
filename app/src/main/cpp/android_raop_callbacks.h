@@ -10,6 +10,8 @@
 extern "C" {
 #endif
 
+#define ANDROID_MAX_REGISTERED 32
+
 typedef struct {
     JavaVM *jvm;
     jobject callback_obj;
@@ -24,6 +26,7 @@ typedef struct {
     jmethodID on_conn_destroy;
     jmethodID on_conn_reset;
     jmethodID on_conn_feedback;
+    jmethodID on_client_registered;
     jmethodID on_display_pin;
     jmethodID on_metadata;
     jmethodID on_coverart;
@@ -37,8 +40,10 @@ typedef struct {
     jmethodID on_video_session_poll;
     int h265_enabled;
     int require_pin;
-    char *registered_keys[16];
+    /* Ed25519 keys (base64) of clients that paired with the PIN, oldest first; guarded by registered_lock */
+    char *registered_keys[ANDROID_MAX_REGISTERED];
     int registered_count;
+    pthread_mutex_t registered_lock;
     /* playback info snapshot pushed by kotlin, read on the native httpd thread */
     pthread_mutex_t playback_info_lock;
     double playback_position;
@@ -53,6 +58,8 @@ typedef struct {
 } android_callback_ctx_t;
 
 void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject callback_obj);
+/* trusts a client key without a PIN (kept from an earlier pairing); returns 1 when it was new */
+int android_callbacks_add_registered(android_callback_ctx_t *ctx, const char *pk_str);
 void android_callbacks_destroy(android_callback_ctx_t *ctx, JNIEnv *env);
 void android_callbacks_fill(raop_callbacks_t *cbs, android_callback_ctx_t *ctx);
 void android_callbacks_update_playback_info(android_callback_ctx_t *ctx, double position,

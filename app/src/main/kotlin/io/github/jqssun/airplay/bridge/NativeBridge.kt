@@ -27,6 +27,7 @@ object NativeBridge {
     external fun nativeSetCodecs(handle: Long, alac: Boolean, aac: Boolean)
     external fun nativeSetHlsEnabled(handle: Long, enabled: Boolean)
     external fun nativeSetLang(handle: Long, lang: String)
+    external fun nativeAddTrustedClient(handle: Long, publicKey: String)
     external fun nativeSetFeature(handle: Long, bit: Int, enabled: Boolean)
     external fun nativeUpdatePlaybackInfo(
         handle: Long, position: Float, duration: Float, rate: Float, readyToPlay: Boolean

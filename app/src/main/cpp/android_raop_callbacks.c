@@ -62,6 +62,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->registered_count = 0;
     ctx->audio_engine = NULL;
     memset(ctx->registered_keys, 0, sizeof(ctx->registered_keys));
+    pthread_mutex_init(&ctx->registered_lock, NULL);
 
     pthread_mutex_init(&ctx->playback_info_lock, NULL);
     pthread_cond_init(&ctx->play_ready_cond, NULL);
@@ -83,6 +84,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->on_conn_destroy = (*env)->GetMethodID(env, cls, "onConnectionDestroy", "()V");
     ctx->on_conn_reset = (*env)->GetMethodID(env, cls, "onConnectionReset", "(I)V");
     ctx->on_conn_feedback = (*env)->GetMethodID(env, cls, "onConnectionFeedback", "()V");
+    ctx->on_client_registered = (*env)->GetMethodID(env, cls, "onClientRegistered", "(Ljava/lang/String;)V");
     ctx->on_display_pin = (*env)->GetMethodID(env, cls, "onDisplayPin", "(Ljava/lang/String;)V");
     ctx->on_metadata = (*env)->GetMethodID(env, cls, "onMetadata", "([B)V");
     ctx->on_coverart = (*env)->GetMethodID(env, cls, "onCoverArt", "([B)V");
@@ -102,11 +104,14 @@ void android_callbacks_destroy(android_callback_ctx_t *ctx, JNIEnv *env) {
         (*env)->DeleteGlobalRef(env, ctx->callback_obj);
         ctx->callback_obj = NULL;
     }
+    pthread_mutex_lock(&ctx->registered_lock);
     for (int i = 0; i < ctx->registered_count; i++) {
         free(ctx->registered_keys[i]);
         ctx->registered_keys[i] = NULL;
     }
     ctx->registered_count = 0;
+    pthread_mutex_unlock(&ctx->registered_lock);
+    pthread_mutex_destroy(&ctx->registered_lock);
     pthread_cond_destroy(&ctx->play_ready_cond);
     pthread_mutex_destroy(&ctx->playback_info_lock);
 }
@@ -320,23 +325,53 @@ static void _mirror_video_running(void *cls, bool running) {
     LOGI("mirror running: %d", running);
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_mirror_running, (jboolean)running);
 }
+int android_callbacks_add_registered(android_callback_ctx_t *ctx, const char *pk_str) {
+    if (!pk_str || !*pk_str) return 0;
+    char *copy = strdup(pk_str);
+    if (!copy) return 0;
+    int added = 1;
+    pthread_mutex_lock(&ctx->registered_lock);
+    for (int i = 0; i < ctx->registered_count; i++) {
+        if (strcmp(ctx->registered_keys[i], pk_str) == 0) { added = 0; break; }
+    }
+    if (added) {
+        if (ctx->registered_count == ANDROID_MAX_REGISTERED) {
+            /* full: forget the oldest pairing (it asks for the PIN again) */
+            free(ctx->registered_keys[0]);
+            memmove(ctx->registered_keys, ctx->registered_keys + 1, (ANDROID_MAX_REGISTERED - 1) * sizeof(char *));
+            ctx->registered_count--;
+        }
+        ctx->registered_keys[ctx->registered_count++] = copy;
+        copy = NULL;
+    }
+    pthread_mutex_unlock(&ctx->registered_lock);
+    free(copy);
+    return added;
+}
+
 static void _register_client(void *cls, const char *device_id, const char *pk_str, const char *name) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     (void)device_id; (void)name;
-    if (ctx->registered_count >= 16) return;
-    for (int i = 0; i < ctx->registered_count; i++) {
-        if (ctx->registered_keys[i] && strcmp(ctx->registered_keys[i], pk_str) == 0) return;
-    }
-    ctx->registered_keys[ctx->registered_count++] = strdup(pk_str);
-    LOGI("registered client pk (slot %d)", ctx->registered_count);
+    if (!android_callbacks_add_registered(ctx, pk_str)) return;
+    LOGI("registered client pk");
+    /* base64 is plain ASCII, valid Modified UTF-8 for NewStringUTF */
+    JNIEnv *env = _get_env(ctx);
+    if (!env) return;
+    jstring jpk = (*env)->NewStringUTF(env, pk_str);
+    if (!jpk) return;
+    (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_client_registered, jpk);
+    (*env)->DeleteLocalRef(env, jpk);
 }
 
 static bool _check_register(void *cls, const char *pk_str) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
-    for (int i = 0; i < ctx->registered_count; i++) {
-        if (ctx->registered_keys[i] && strcmp(ctx->registered_keys[i], pk_str) == 0) return true;
+    bool found = false;
+    pthread_mutex_lock(&ctx->registered_lock);
+    for (int i = 0; i < ctx->registered_count && !found; i++) {
+        found = strcmp(ctx->registered_keys[i], pk_str) == 0;
     }
-    return false;
+    pthread_mutex_unlock(&ctx->registered_lock);
+    return found;
 }
 
 /* --- AirPlay Video (HLS) playback callbacks --- */

@@ -323,6 +323,19 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeSetLang(
     env->ReleaseStringUTFChars(lang, c);
 }
 
+// a client key that paired with the PIN earlier (persisted by the app); call before nativeStart
+extern "C"
+JNIEXPORT void JNICALL
+Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeAddTrustedClient(
+        JNIEnv *env, jobject thiz, jlong handle, jstring pk) {
+    server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
+    if (!ctx || !pk) return;
+    const char *c = env->GetStringUTFChars(pk, NULL);
+    if (!c) return;
+    android_callbacks_add_registered(&ctx->cb_ctx, c);
+    env->ReleaseStringUTFChars(pk, c);
+}
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeSetFeature(

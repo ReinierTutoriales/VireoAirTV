@@ -219,6 +219,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     lateinit var dacpPlayer: DacpPlayer
         private set
     private val _mainHandler = Handler(Looper.getMainLooper())
+    private val trustedClients by lazy { TrustedClients(this) }
     @Volatile private var _coverArtBytes: ByteArray? = null
     private var mediaSession: MediaSession? = null
     private lateinit var sessionPlayer: SessionPlayer
@@ -462,6 +463,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             return
         }
         audioRenderer.attachEngine(nativeHandle)
+        // senders that already paired with the PIN connect without it again
+        if (requirePin) trustedClients.all().forEach { NativeBridge.nativeAddTrustedClient(nativeHandle, it) }
 
         // apply settings from preferences
         val maxFps = prefs[Prefs.MAX_FPS]
@@ -942,6 +945,17 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // native mirror thread: the restart joins that thread, so it has to run elsewhere
         log("Connection reset: $reason")
         _mainHandler.post { if (_connectionCount.value > 0) _restartServer() }
+    }
+
+    override fun onClientRegistered(publicKey: String) {
+        trustedClients.add(publicKey)
+        log("Sender paired with the PIN; it will not be asked again")
+    }
+
+    /** Forgets every PIN pairing; the next connection of each sender asks for the PIN again. */
+    fun forgetTrustedClients() {
+        trustedClients.clear()
+        _restartServer()
     }
 
     override fun onConnectionFeedback() {

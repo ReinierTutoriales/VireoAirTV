@@ -104,6 +104,8 @@
     <!-- Settings: Connection -->
     <string name="setting_require_pin">Require PIN (Beta)</string>
     <string name="setting_require_pin_desc">Require 4-digit PIN for each new connection</string>
+    <string name="setting_forget_paired">Forget paired devices</string>
+    <string name="setting_forget_paired_desc">Devices that entered the PIN connect without it. Forget them so each one is asked again.</string>
     <string name="setting_allow_new_conn">Allow new connections</string>
     <string name="setting_allow_new_conn_desc">Drop current sender when a new one connects</string>
 

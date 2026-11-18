@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.core.net.toUri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -135,6 +136,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
             checked = requirePin,
             onCheckedChange = { viewModel.set(Prefs.REQUIRE_PIN, it) }
         )
+        if (requirePin) {
+            SettingAction(
+                title = stringResource(R.string.setting_forget_paired),
+                description = stringResource(R.string.setting_forget_paired_desc),
+                onClick = { viewModel.forgetTrustedClients() }
+            )
+        }
 
         SettingSwitch(
             title = stringResource(R.string.setting_allow_new_conn),
@@ -717,6 +725,17 @@ private fun <T> SettingSegmented(
                 Text(summary)
             }
         }
+    )
+}
+
+@Composable
+private fun SettingAction(title: String, description: String, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier
+            .dpadFocus(RectangleShape)
+            .clickable(role = Role.Button, onClick = onClick),
+        headlineContent = { Text(title) },
+        supportingContent = { Text(description) },
     )
 }
 
