@@ -281,7 +281,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 )
             },
             positionMs = ::currentPositionMs,
-            setPlaying = ::_setPlaying,
+            setPlaying = ::_userSetPlaying,
         )
         sessionPlayer = SessionPlayer(mainLooper, VIDEO_SEEK_STEP_MS, ::_sessionSnapshot, object : SessionPlayer.Controls {
             override fun setPlaying(playing: Boolean) {
@@ -289,7 +289,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                     airPlayVideoPlayer.setPlaying(playing)
                     return
                 }
-                _setPlaying(playing)
+                _userSetPlaying(playing)
                 dacpController?.let { if (playing) it.play() else it.pause() }
             }
             override fun stop() {
@@ -781,7 +781,11 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         clearPin()
         audioRenderer.start()
         audioRenderer.setFormat(ct, spf)
-        if (!usingScreen) _setPlaying(true)
+        if (!usingScreen) {
+            // a new audio stream is the sender resuming, whatever was paused from the TV
+            _localPauseAt = Long.MIN_VALUE / 2
+            _setPlaying(true)
+        }
         if (!usingScreen && !_audioOnly.value) {
             // pure music streaming (not screen mirroring audio)
             _setAudioOnly(true)
@@ -1002,7 +1006,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _durationMs.value = durMs
         _progressBaseMs = posMs
         _progressBaseTime = SystemClock.elapsedRealtime()
-        _playing.value = true
+        // senders keep reporting progress for several seconds after a pause sent from the TV;
+        // that is not a resume (jqssun/android-airplay-server#84)
+        if (SystemClock.elapsedRealtime() - _localPauseAt >= LOCAL_PAUSE_HOLD_MS) _playing.value = true
         _updatePlaybackState()
         _refreshDacpPlayer()
     }
@@ -1048,9 +1054,17 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _updateMediaNotification()
     }
 
+    private var _localPauseAt = Long.MIN_VALUE / 2
+
+    // play/pause from the TV (remote, notification, media session), not from the sender
+    private fun _userSetPlaying(playing: Boolean) {
+        _localPauseAt = if (playing) Long.MIN_VALUE / 2 else SystemClock.elapsedRealtime()
+        _setPlaying(playing)
+    }
+
     fun togglePlayPause() {
         val nowPlaying = !_playing.value
-        _setPlaying(nowPlaying)
+        _userSetPlaying(nowPlaying)
         dacpController?.let { if (nowPlaying) it.play() else it.pause() }
     }
 
@@ -1388,6 +1402,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val CLIENT_VOL_MAX_STEPS = 32
         private const val CLIENT_VOL_TIMEOUT_MS = 800L
         private const val MISSED_FEEDBACK_LIMIT_MS = 15_000L
+        private const val LOCAL_PAUSE_HOLD_MS = 10_000L
         private const val FEEDBACK_CHECK_MS = 1_000L
         private const val CHANNEL_ID = "airplay_service"
         private const val CHANNEL_ALERTS_ID = "airplay_alerts"
