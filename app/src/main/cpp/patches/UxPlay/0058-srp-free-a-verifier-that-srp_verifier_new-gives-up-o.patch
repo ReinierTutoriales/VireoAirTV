@@ -1,0 +1,89 @@
+From 294bc7930a1a069b5e2d9064b439eb056e31e76a Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:33:26 -0500
+Subject: [PATCH 58/58] srp: free a verifier that srp_verifier_new() gives up
+ on
+
+Failure paths, including the SRP-6a refusal of A = 0 mod N, freed the struct but not its username and NGConstant (two BIGNUMs): memory a client could make grow with repeated requests. The verifier is now zeroed on allocation and released with srp_verifier_delete(); ng is freed in cleanup while ver does not own it yet.
+---
+ lib/srp.c | 18 +++++++++++-------
+ 1 file changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/lib/srp.c b/lib/srp.c
+index 41048dc..0edd8b2 100644
+--- a/lib/srp.c
++++ b/lib/srp.c
+@@ -772,6 +772,7 @@ struct SRPVerifier *  srp_verifier_new( SRP_HashAlgorithm alg, SRP_NGType ng_typ
+     int                 ulen = strlen(username) + 1;
+     NGConstant         *ng   = new_ng( ng_type, n_hex, g_hex );
+     struct SRPVerifier *ver  = 0;
++    int                 ng_owned = 0;
+ 
+     *len_B   = 0;
+     *bytes_B = 0;
+@@ -779,7 +780,8 @@ struct SRPVerifier *  srp_verifier_new( SRP_HashAlgorithm alg, SRP_NGType ng_typ
+     if( !s || !v || !A || !B || !S || !b || !tmp1 || !tmp2 || !ctx || !ng )
+        goto cleanup_and_exit;
+ 
+-    ver = (struct SRPVerifier *) malloc( sizeof(struct SRPVerifier) );
++    /* zeroed, so srp_verifier_delete() can free a half-built verifier */
++    ver = (struct SRPVerifier *) calloc( 1, sizeof(struct SRPVerifier) );
+ 
+     if (!ver)
+        goto cleanup_and_exit;
+@@ -789,10 +791,11 @@ struct SRPVerifier *  srp_verifier_new( SRP_HashAlgorithm alg, SRP_NGType ng_typ
+     ver->username = (char *) malloc( ulen );
+     ver->hash_alg = alg;
+     ver->ng       = ng;
++    ng_owned      = 1;   /* srp_verifier_delete() frees it from here */
+ 
+     if (!ver->username)
+     {
+-       free(ver);
++       srp_verifier_delete(ver);
+        ver = 0;
+        goto cleanup_and_exit;
+     }
+@@ -823,7 +826,7 @@ struct SRPVerifier *  srp_verifier_new( SRP_HashAlgorithm alg, SRP_NGType ng_typ
+ 
+        if(!k)
+        {
+-          free(ver);
++          srp_verifier_delete(ver);
+           ver = 0;
+           goto cleanup_and_exit;
+        }
+@@ -849,7 +852,7 @@ struct SRPVerifier *  srp_verifier_new( SRP_HashAlgorithm alg, SRP_NGType ng_typ
+ 
+        if(!u)
+        {
+-          free(ver);
++          srp_verifier_delete(ver);
+           ver = 0;
+           goto cleanup_and_exit;
+        }
+@@ -872,8 +875,7 @@ struct SRPVerifier *  srp_verifier_new( SRP_HashAlgorithm alg, SRP_NGType ng_typ
+ 
+        if( !((const unsigned char *)*bytes_B) )
+        {
+-          free( (void*) ver->username );
+-          free( ver );
++          srp_verifier_delete(ver);
+           ver = 0;
+           *len_B = 0;
+           goto cleanup_and_exit;
+@@ -883,11 +885,13 @@ struct SRPVerifier *  srp_verifier_new( SRP_HashAlgorithm alg, SRP_NGType ng_typ
+ 
+        ver->bytes_B = *bytes_B;
+     } else {
+-       free(ver);
++       /* A % N == 0: refuse (the username and ng leaked here before) */
++       srp_verifier_delete(ver);
+        ver = 0;
+     }
+ 
+  cleanup_and_exit:
++    if (ng && !ng_owned) delete_ng(ng);
+     BN_free(s);
+     BN_free(v);
+     BN_free(A);

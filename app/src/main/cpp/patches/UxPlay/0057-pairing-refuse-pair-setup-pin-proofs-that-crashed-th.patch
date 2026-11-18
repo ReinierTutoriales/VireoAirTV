@@ -1,0 +1,39 @@
+From 5b18bca68520563f9c78c1aa720c89e0eb16c3ff Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:33:26 -0500
+Subject: [PATCH 57/58] pairing: refuse pair-setup-pin proofs that crashed the
+ receiver
+
+srp_validate_proof() read session->srp without checking it, so a POST /pair-setup-pin carrying pk and proof, sent without the first step, dereferenced NULL. With the first step done, a client A that is 0 mod N makes srp_verifier_new() return NULL (the SRP-6a check), which went straight into srp_verifier_verify_session(). The handler is registered whether or not a PIN is required, so any host on the LAN could crash the receiver before pairing. Same code in UxPlay master.
+---
+ lib/pairing.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/lib/pairing.c b/lib/pairing.c
+index ebe2aeb..615efdf 100644
+--- a/lib/pairing.c
++++ b/lib/pairing.c
+@@ -573,6 +573,10 @@ srp_validate_proof(pairing_session_t *session, pairing_t *pairing, const unsigne
+                     int len_A, unsigned char *proof, int client_proof_len, int proof_len) {
+     int authenticated  = 0;
+     const unsigned char *B =  NULL;
++    /* the proof step can arrive without the first pair-setup-pin step */
++    if (!session->srp) {
++        return -1;
++    }
+     const unsigned char *b = session->srp->private_key;
+     int len_b = SRP_PRIVATE_KEY_SIZE;
+     int len_B = 0;
+@@ -586,6 +590,12 @@ srp_validate_proof(pairing_session_t *session, pairing_t *pairing, const unsigne
+                                                     A, len_A,
+                                                     b, len_b,
+                                                     &B, &len_B, NULL, NULL, 1);
++    /* NULL when the client's A is 0 mod N (SRP-6a safety check) or on allocation failure */
++    if (!verifier) {
++        free (session->srp);
++        session->srp = NULL;
++        return -1;
++    }
+ 
+     srp_verifier_verify_session(verifier, proof, &M2);
+     authenticated = srp_verifier_is_authenticated(verifier);
