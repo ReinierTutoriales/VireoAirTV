@@ -108,22 +108,28 @@ android {
 }
 
 tasks.register("applyUxplayPatches") {
-    // resolved at configuration time: the action must not reference the project (configuration cache)
-    val uxplayDir = layout.projectDirectory.dir("src/main/cpp/third_party/UxPlay").asFile
-    val patchDir = layout.projectDirectory.dir("src/main/cpp/patches/UxPlay").asFile
+    // patches/<name>/*.patch apply in order to third_party/<name>; resolved at configuration time:
+    // the action must not reference the project (configuration cache)
+    val cppDir = layout.projectDirectory.dir("src/main/cpp").asFile
+    val targets = listOf("UxPlay", "libplist").map {
+        File(cppDir, "third_party/$it") to File(cppDir, "patches/$it")
+    }
     doLast {
-        fun git(vararg args: String): String {
-            val proc = ProcessBuilder("git", "-C", uxplayDir.path, *args)
-                .redirectErrorStream(true).start()
-            val out = proc.inputStream.bufferedReader().readText()
-            check(proc.waitFor() == 0) { "git ${args.joinToString(" ")} failed:\n$out" }
-            return out
+        targets.forEach { (repoDir, patchDir) ->
+            fun git(vararg args: String): String {
+                val proc = ProcessBuilder("git", "-C", repoDir.path, *args)
+                    .redirectErrorStream(true).start()
+                val out = proc.inputStream.bufferedReader().readText()
+                check(proc.waitFor() == 0) { "git ${args.joinToString(" ")} failed:\n$out" }
+                return out
+            }
+            val patches = patchDir.listFiles { f -> f.extension == "patch" }.orEmpty().sorted()
+            if (patches.isEmpty()) return@forEach
+            val touched = patches.flatMap { git("apply", "--numstat", it.path).trim().lines() }
+                .map { it.substringAfterLast("\t") }.distinct()
+            git("checkout", "--", *touched.toTypedArray())
+            patches.forEach { git("apply", "--unidiff-zero", it.path) }
         }
-        val patches = patchDir.listFiles { f -> f.extension == "patch" }!!.sorted()
-        val touched = patches.flatMap { git("apply", "--numstat", it.path).trim().lines() }
-            .map { it.substringAfterLast("\t") }.distinct()
-        git("checkout", "--", *touched.toTypedArray())
-        patches.forEach { git("apply", "--unidiff-zero", it.path) }
     }
 }
 
