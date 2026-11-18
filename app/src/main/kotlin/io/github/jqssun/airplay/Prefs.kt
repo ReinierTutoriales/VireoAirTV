@@ -92,7 +92,9 @@ object Prefs {
     // lower = less latency, higher = more stable
     val AUDIO_ADAPTIVE_STEP = int("audio_adaptive_step", 3, ADAPTIVE_PERCENTILES.indices)
     val OBOE_BUFFER_FRAMES = int("oboe_buffer_frames", 0, 0..8192)
-    val ALAC_ENABLED = bool("alac_enabled", false, restart = true)
+    // lossless for audio-only streams (UxPlay README: "superior-quality ALAC Apple Lossless audio in
+    // Airplay audio-only mode"); without it the sender re-encodes music as AAC
+    val ALAC_ENABLED = bool("alac_enabled", true, restart = true)
     val FORCE_SW_ALAC = bool("force_sw_alac", true)
     val FORCE_SW_AAC = bool("force_sw_aac", false)
     val AAC_ENABLED = bool("aac_enabled", true, restart = true)

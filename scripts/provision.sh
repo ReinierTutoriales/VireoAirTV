@@ -61,6 +61,7 @@ set_setting auto_start true
 set_setting boot_auto_start true
 set_setting run_in_background true
 set_setting launch_on_connect true
+set_setting alac_enabled true
 
 if [[ -n "$SERVER_NAME" ]]; then
   set_setting server_name "$SERVER_NAME"

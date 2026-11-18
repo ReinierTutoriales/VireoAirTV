@@ -56,7 +56,8 @@ $settings = @(
     @("auto_start", "true"),
     @("boot_auto_start", "true"),
     @("run_in_background", "true"),
-    @("launch_on_connect", "true")
+    @("launch_on_connect", "true"),
+    @("alac_enabled", "true")
 )
 if ($ServerName) {
     $settings += ,@("server_name", $ServerName)
