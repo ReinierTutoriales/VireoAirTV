@@ -1,0 +1,27 @@
+From 63ae11a58f529875a1bd7db4d40db95ec1c31df3 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:12:33 -0500
+Subject: [PATCH 55/55] raop: log a changed client session id instead of
+ asserting
+
+The X-Apple-Session-ID header comes from the client. On a RAOP connection the stored id is NULL, so any request carrying the header made debug builds call strcmp() with NULL; a different id aborted them. Release builds compiled the check out. Now a mismatch is logged.
+---
+ lib/raop.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/lib/raop.c b/lib/raop.c
+index 93358e9..891c6c8 100644
+--- a/lib/raop.c
++++ b/lib/raop.c
+@@ -396,8 +396,9 @@ conn_request(void *ptr, http_request_t *request, http_response_t **response) {
+         free(header_str);
+     }
+     
+-    if (client_session_id) {
+-        assert(!strcmp(client_session_id, conn->client_session_id));
++    /* header from the network: a mismatch aborted debug builds (and a NULL stored id crashed strcmp) */
++    if (client_session_id && conn->client_session_id && strcmp(client_session_id, conn->client_session_id)) {
++        logger_log(raop->logger, LOGGER_WARNING, "client session id changed on this connection");
+     }
+ 
+     logger_log(raop->logger, LOGGER_DEBUG, "Handling request %s with URL %s", method, url);
