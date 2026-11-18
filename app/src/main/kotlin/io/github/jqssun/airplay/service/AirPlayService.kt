@@ -158,6 +158,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private val _videoPlaybackSize = MutableStateFlow<Pair<Int, Int>?>(null)
     val videoPlaybackSize = _videoPlaybackSize.asStateFlow()
+    // true once the current item has drawn a frame; drives the fade-in
+    private val _videoFrameShown = MutableStateFlow(false)
+    val videoFrameShown = _videoFrameShown.asStateFlow()
 
     // container/manifest metadata
     private val _videoTitle = MutableStateFlow("")
@@ -332,6 +335,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _videoPlaybackSize.value = width to height
         }
         airPlayVideoPlayer.onTitle = { _videoTitle.value = it ?: "" }
+        airPlayVideoPlayer.onFirstFrame = { _videoFrameShown.value = true }
         airPlayVideoPlayer.onEnded = { _endVideoPlayback("AirPlay Video stopped (player)") }
         airPlayVideoPlayer.onPlaybackInfo = { snapshot ->
             if (nativeHandle != 0L) {
@@ -721,6 +725,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackInfo.value = VideoPlaybackInfo(positionMs = (startPositionSeconds * 1000).toLong())
         _videoPlaybackAspect.value = 16f / 9f
         _videoPlaybackSize.value = null
+        _videoFrameShown.value = false
         _videoTitle.value = ""
         _videoPlaybackActive.value = true
         airPlayVideoPlayer.play(location, startPositionSeconds)

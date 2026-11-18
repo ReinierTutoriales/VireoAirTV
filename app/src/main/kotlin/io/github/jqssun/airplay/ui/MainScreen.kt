@@ -170,12 +170,16 @@ fun MainScreen(
 
     if (videoScreen) {
         val videoPlaybackAspect by viewModel.videoPlaybackAspect.collectAsState()
+        val frameShown by viewModel.videoFrameShown.collectAsState()
         val playback: @Composable () -> Unit = {
-            VideoSurfaceView(
-                onSurfaceAvailable = { viewModel.onVideoPlaybackSurfaceAvailable(it) },
-                onSurfaceDestroyed = { viewModel.onVideoPlaybackSurfaceDestroyed(it) },
-                aspectRatio = videoPlaybackAspect
-            )
+            Box(contentAlignment = Alignment.Center) {
+                VideoSurfaceView(
+                    onSurfaceAvailable = { viewModel.onVideoPlaybackSurfaceAvailable(it) },
+                    onSurfaceDestroyed = { viewModel.onVideoPlaybackSurfaceDestroyed(it) },
+                    aspectRatio = videoPlaybackAspect
+                )
+                FadeFromBlack(active = frameShown, modifier = Modifier.matchParentSize())
+            }
         }
         if (isInPip) {
             Box(
@@ -327,6 +331,8 @@ fun MainScreen(
                     applyAspectRatio = false,
                     modifier = sizeModifier
                 )
+                // same size and transform as the surface; both centered by VideoContentFrame
+                FadeFromBlack(active = frameShown, modifier = sizeModifier)
             }
             VideoPlayerGestures(
                 enabled = videoPlaybackActive,

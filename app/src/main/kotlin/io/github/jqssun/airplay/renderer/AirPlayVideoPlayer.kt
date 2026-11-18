@@ -54,6 +54,7 @@ class AirPlayVideoPlayer(private val context: Context) {
     var onVideoSize: ((width: Int, height: Int, aspect: Float) -> Unit)? = null
     var onTitle: ((String?) -> Unit)? = null
     var onEnded: (() -> Unit)? = null
+    var onFirstFrame: (() -> Unit)? = null
 
     private val _reportTick = object : Runnable {
         override fun run() {
@@ -73,6 +74,9 @@ class AirPlayVideoPlayer(private val context: Context) {
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
             // duration is usually established here (esp. hls): report so the held /play releases
             _reportPlaybackInfo()
+        }
+        override fun onRenderedFirstFrame() {
+            onFirstFrame?.invoke()
         }
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
             onTitle?.invoke(mediaMetadata.title?.toString())

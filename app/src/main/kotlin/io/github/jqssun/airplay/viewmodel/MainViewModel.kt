@@ -159,6 +159,8 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
 
     private val _videoPlaybackSize = MutableStateFlow<Pair<Int, Int>?>(null)
     val videoPlaybackSize: StateFlow<Pair<Int, Int>?> = _videoPlaybackSize.asStateFlow()
+    private val _videoFrameShown = MutableStateFlow(false)
+    val videoFrameShown: StateFlow<Boolean> = _videoFrameShown.asStateFlow()
 
     private val _videoBuffering = MutableStateFlow(false)
     val videoBuffering: StateFlow<Boolean> = _videoBuffering.asStateFlow()
@@ -349,6 +351,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             }
             launch { svc.videoPlaybackAspect.collect { _videoPlaybackAspect.value = it } }
             launch { svc.videoPlaybackSize.collect { _videoPlaybackSize.value = it } }
+            launch { svc.videoFrameShown.collect { _videoFrameShown.value = it } }
             launch { svc.videoTitle.collect { _videoTitle.value = it.ifEmpty { svc.trackInfo.value.title } } }
             launch { svc.videoLocation.collect { _videoLocation.value = it } }
         }
@@ -500,6 +503,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
                 _videoBuffering.value = info.buffering
                 _videoPlaybackAspect.value = it.videoPlaybackAspect.value
                 _videoPlaybackSize.value = it.videoPlaybackSize.value
+                _videoFrameShown.value = it.videoFrameShown.value
                 // stream metadata first, dmap second; senders rarely provide either for video
                 _videoTitle.value = it.videoTitle.value.ifEmpty { it.trackInfo.value.title }
                 _videoLocation.value = it.videoLocation.value
