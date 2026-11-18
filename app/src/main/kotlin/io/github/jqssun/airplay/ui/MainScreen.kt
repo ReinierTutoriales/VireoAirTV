@@ -155,12 +155,14 @@ fun MainScreen(
     // fullscreen only once mirroring reports a size or audio starts: connections rise before the kind is known
     var prevMirroringActive by remember { mutableStateOf(false) }
     var prevAudioOnly by remember { mutableStateOf(false) }
+    val tv = isTv()
     LaunchedEffect(mirroringActive, audioOnly, videoPlaybackActive, pin) {
         val mirrorStarted = !prevMirroringActive && mirroringActive
         val audioStarted = !prevAudioOnly && audioOnly
         prevMirroringActive = mirroringActive
         prevAudioOnly = audioOnly
-        if ((mirrorStarted || audioStarted) && !videoPlaybackActive && autoFullscreen && pin == null) {
+        // on a TV music always opens full screen, as on Apple TV
+        if ((mirrorStarted || audioStarted) && !videoPlaybackActive && (autoFullscreen || (audioStarted && tv)) && pin == null) {
             fullscreen = true
         }
     }
@@ -597,11 +599,8 @@ fun MainScreen(
     } else if (fullscreen) {
         BackHandler { fullscreen = false }
         if (audioOnly && connections > 0) {
-            NowPlayingContent(
-                viewModel = viewModel,
-                fullscreen = true,
-                onExitFullscreen = { fullscreen = false }
-            )
+            // Back leaves through the BackHandler above; the screen itself has no buttons to exit
+            NowPlayingTvScreen(viewModel)
         } else {
             FullscreenVideo(
                 viewModel = viewModel,
@@ -724,7 +723,8 @@ private fun OverviewContent(
             val connecting = state == ServerState.RUNNING && connections > 0 &&
                 !mirroringActive && !videoPlaybackActive
             if (showAudioMode && state == ServerState.RUNNING && connections > 0) {
-                NowPlayingContent(viewModel, onFullscreen = onFullscreen)
+                // on a TV the card shows the same Apple TV style screen as full screen
+                if (isTv()) NowPlayingTvCard(viewModel, onOpen = onFullscreen) else NowPlayingContent(viewModel, onFullscreen = onFullscreen)
             } else {
                 if (state == ServerState.RUNNING && (mirroringActive || idlePreview)) {
                     video()
