@@ -1,0 +1,330 @@
+From c81a671e9602d2c8d549a1f240ff4def4a4abd84 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Sun, 30 Aug 2026 12:37:47 -0400
+Subject: [PATCH 33/43] add recv with kernel timestamp to raop_rtp.c
+
+(cherry picked from commit aec205d49302df8d4eb291b9e927ed428b2d0166)
+---
+ lib/raop_ntp.c | 83 +++++++++++++++++++++++++++++++++++++-------------
+ lib/raop_ntp.h | 11 ++++---
+ lib/raop_rtp.c | 52 +++++++++++++++++++++++++------
+ 3 files changed, 110 insertions(+), 36 deletions(-)
+
+diff --git a/lib/raop_ntp.c b/lib/raop_ntp.c
+index 5934d9f..6dcf86a 100644
+--- a/lib/raop_ntp.c
++++ b/lib/raop_ntp.c
+@@ -65,7 +65,7 @@ struct raop_ntp_s {
+     int64_t sync_offset;
+     int64_t sync_dispersion;
+     int64_t sync_delay;
+-    raop_ntp_session_t *ntp_session;
++    kernel_timestamp_session_t *ntp_session;
+ 
+     // Socket address of the AirPlay client
+     struct sockaddr_storage remote_saddr;
+@@ -106,8 +106,8 @@ void raop_ntp_global_init(void) {
+ #endif
+ }
+ 
+-raop_ntp_session_t* raop_ntp_session_create(int sock_fd) {
+-    raop_ntp_session_t *session = (raop_ntp_session_t*)calloc(1, sizeof(raop_ntp_session_t));
++kernel_timestamp_session_t* kernel_timestamp_session_create(int sock_fd) {
++    kernel_timestamp_session_t *session = (kernel_timestamp_session_t*)calloc(1, sizeof(kernel_timestamp_session_t));
+     if (!session) return NULL;
+     session->sock_fd = sock_fd;
+ 
+@@ -154,18 +154,30 @@ raop_ntp_session_t* raop_ntp_session_create(int sock_fd) {
+     return session;
+ }
+ 
+-ssize_t raop_ntp_session_recv(raop_ntp_session_t *session, char *buf, size_t buf_len, uint64_t *out_local_us) {
++ssize_t kernel_timestamp_session_recv(kernel_timestamp_session_t *session, char *buf, size_t buf_len, 
++                                      uint64_t *out_local_us, void *src_addr, int *addrlen) {
+     if (!session || !buf || buf_len == 0 || !out_local_us) return -1;
+ 
+ #ifdef _WIN32
+-    #if defined(SIO_TIMESTAMPING)  //UCRT64 only
++#if defined(SIO_TIMESTAMPING) //not defined in legacy MSVCRT systems such as MSYS2 MINGW64
+     LPFN_WSARECVMSG pWSARecvMsg = (LPFN_WSARECVMSG)session->pWSARecvMsg_ptr;
+     if (pWSARecvMsg != NULL) {
+         WSABUF wsa_buf = { .len = (ULONG)buf_len, .buf = buf };
+         char control_buf[WSA_CMSG_SPACE(sizeof(UINT64))];
+-        WSAMSG wsa_msg = { .lpBuffers = &wsa_buf, .dwBufferCount = 1, .Control.len = sizeof(control_buf), .Control.buf = control_buf };
+-        DWORD bytes_received = 0;
+         
++        struct sockaddr_storage win_remote_addr = {0};
++        INT win_addr_len = sizeof(win_remote_addr);
++
++        WSAMSG wsa_msg = {
++            .name = (LPSOCKADDR)&win_remote_addr,
++            .namelen = win_addr_len,
++            .lpBuffers = &wsa_buf,
++            .dwBufferCount = 1,
++            .Control.len = sizeof(control_buf),
++            .Control.buf = control_buf
++        };
++
++        DWORD bytes_received = 0;
+         if (pWSARecvMsg((SOCKET)session->sock_fd, &wsa_msg, &bytes_received, NULL, NULL) != SOCKET_ERROR) {
+             LARGE_INTEGER qpc_now;
+             QueryPerformanceCounter(&qpc_now);
+@@ -184,31 +196,51 @@ ssize_t raop_ntp_session_recv(raop_ntp_session_t *session, char *buf, size_t buf
+                 }
+                 cmsg = WSA_CMSG_NXTHDR(&wsa_msg, cmsg);
+             }
++
++            if (src_addr && addrlen) {
++                int copy_len = (wsa_msg.namelen < *addrlen) ? wsa_msg.namelen : *addrlen;
++                memcpy(src_addr, wsa_msg.name, copy_len);
++                *addrlen = wsa_msg.namelen;
++            }
++
+             return (ssize_t)bytes_received;
+         }
+     }
+-    #endif
++#endif
+     //fallback path if kernel timestamp could not be extracted; also used on MINGW64 systems
+-    int from_len = sizeof(struct sockaddr_in);
+-    struct sockaddr_in client_addr;
+-    ssize_t n = recvfrom((SOCKET)session->sock_fd, buf, (int)buf_len, 0, (struct sockaddr*)&client_addr, &from_len);
++    int from_len = (src_addr && addrlen) ? *addrlen : sizeof(struct sockaddr_storage);
++    struct sockaddr_storage fallback_addr = {0};
+     
++    ssize_t n = recvfrom((SOCKET)session->sock_fd, buf, (int)buf_len, 0, 
++                         src_addr ? (struct sockaddr*)src_addr : (struct sockaddr*)&fallback_addr, &from_len);
++    
++    if (n >= 0 && addrlen) {
++        *addrlen = from_len;
++    }
++
+     LARGE_INTEGER qpc_now;
+     QueryPerformanceCounter(&qpc_now);
+     int64_t elapsed_ticks = qpc_now.QuadPart - session->base_qpc_ticks;
+     *out_local_us = session->base_system_time_us + ((elapsed_ticks * 1000000LL) / session->qpc_frequency);
+     return n;
+-#else
+-    struct sockaddr_in client_addr;
++
++#else // Linux / POSIX path
++    struct sockaddr_storage linux_remote_addr = {0};
+     struct iovec iov = { .iov_base = buf, .iov_len = buf_len };
+     char control_buf[CMSG_SPACE(sizeof(struct timeval))];
++    
+     struct msghdr msg = {
+-        .msg_name = &client_addr, .msg_namelen = sizeof(client_addr),
+-        .msg_iov = &iov, .msg_iovlen = 1,
+-        .msg_control = control_buf, .msg_controllen = sizeof(control_buf)
++        .msg_name = &linux_remote_addr,
++        .msg_namelen = sizeof(linux_remote_addr),
++        .msg_iov = &iov,
++        .msg_iovlen = 1,
++        .msg_control = control_buf,
++        .msg_controllen = sizeof(control_buf)
+     };
++
+     ssize_t n = recvmsg(session->sock_fd, &msg, 0);
+     if (n < 0) return n;
++
+     struct timeval tv_now;
+     gettimeofday(&tv_now, NULL);
+     *out_local_us = ((uint64_t)tv_now.tv_sec * 1000000ULL) + (uint64_t)tv_now.tv_usec;
+@@ -220,11 +252,18 @@ ssize_t raop_ntp_session_recv(raop_ntp_session_t *session, char *buf, size_t buf
+             break;
+         }
+     }
++
++    if (src_addr && addrlen) {
++        int copy_len = ((int)msg.msg_namelen < *addrlen) ? (int)msg.msg_namelen : *addrlen;
++        memcpy(src_addr, msg.msg_name, copy_len);
++        *addrlen = (int)msg.msg_namelen; 
++    }
++
+     return n;
+ #endif
+ }
+ 
+-void raop_ntp_session_destroy(raop_ntp_session_t *ntp_session) {
++void kernel_timestamp_session_destroy(kernel_timestamp_session_t *ntp_session) {
+     if (ntp_session) {
+         CLOSESOCKET(ntp_session->sock_fd);
+         free(ntp_session);
+@@ -356,7 +395,7 @@ raop_ntp_init_socket(raop_ntp_t *raop_ntp, int use_ipv6)
+         goto sockets_cleanup;
+     }
+ 
+-    raop_ntp->ntp_session = raop_ntp_session_create(tsock);
++    raop_ntp->ntp_session = kernel_timestamp_session_create(tsock);
+     if (raop_ntp->ntp_session == NULL) {
+         logger_log(raop_ntp->logger, LOGGER_ERR, "raop_ntp: Failed to allocate high-precision session context");
+         goto sockets_cleanup;
+@@ -387,7 +426,7 @@ raop_ntp_init_socket(raop_ntp_t *raop_ntp, int use_ipv6)
+ 
+     sockets_cleanup:
+     if (raop_ntp->ntp_session != NULL) {
+-        raop_ntp_session_destroy(raop_ntp->ntp_session);
++        kernel_timestamp_session_destroy(raop_ntp->ntp_session);
+         raop_ntp->ntp_session = NULL;
+     } else if (tsock != -1) {
+         // Fallback to protect if the handle crashed out before session instantiation
+@@ -465,8 +504,8 @@ raop_ntp_thread(void *arg)
+         } else {
+             // Read response
+             uint64_t kernel_recv_time_microsecs;   // kernel recv timestamp in microsecs
+-            response_len = raop_ntp_session_recv(raop_ntp->ntp_session, (char *) response, sizeof(response),
+-                                                 &kernel_recv_time_microsecs);
++            response_len = kernel_timestamp_session_recv(raop_ntp->ntp_session, (char *) response, sizeof(response),
++                                                         &kernel_recv_time_microsecs, NULL, NULL);
+             if (response_len < 0) {
+                 char time[30];
+                 ntp_timestamp_to_time(send_time, time, sizeof(time));
+@@ -615,7 +654,7 @@ raop_ntp_stop(raop_ntp_t *raop_ntp)
+     THREAD_JOIN(raop_ntp->thread);
+ 
+     if (raop_ntp->ntp_session != NULL) {
+-        raop_ntp_session_destroy(raop_ntp->ntp_session);
++        kernel_timestamp_session_destroy(raop_ntp->ntp_session);
+         raop_ntp->ntp_session = NULL;
+         raop_ntp->tsock = -1; 
+     } else if (raop_ntp->tsock != -1) {
+diff --git a/lib/raop_ntp.h b/lib/raop_ntp.h
+index 61aaa71..283a942 100644
+--- a/lib/raop_ntp.h
++++ b/lib/raop_ntp.h
+@@ -26,7 +26,7 @@
+ 
+ typedef struct raop_ntp_s raop_ntp_t;
+ 
+-typedef struct raop_ntp_session_s {
++typedef struct kernel_timestamp_session_s {
+     int sock_fd;
+     uint64_t base_system_time_us;
+ #ifdef _WIN32
+@@ -34,12 +34,13 @@ typedef struct raop_ntp_session_s {
+     int64_t base_qpc_ticks;
+     int64_t qpc_frequency;
+ #endif
+-} raop_ntp_session_t;
++} kernel_timestamp_session_t;
+ 
+ void raop_ntp_global_init(void);
+-raop_ntp_session_t * raop_ntp_session_create(int sock_fd);
+-ssize_t raop_ntp_session_recv(raop_ntp_session_t *session, char *buf, size_t buf_len, uint64_t *out_local_us);
+-void raop_ntp_session_destroy(raop_ntp_session_t *session);
++kernel_timestamp_session_t * kernel_timestamp_session_create(int sock_fd);
++ssize_t kernel_timestamp_session_recv(kernel_timestamp_session_t *session, char *buf, size_t buf_len,
++                                      uint64_t *out_local_us, void *src_addr, int *addr_len);
++void kernel_timestamp_session_destroy(kernel_timestamp_session_t *session);
+ void *raop_ntp_thread_worker(void *param);
+ 
+ typedef enum timing_protocol_e { NTP, TP_NONE, TP_OTHER, TP_UNSPECIFIED } timing_protocol_t;
+diff --git a/lib/raop_rtp.c b/lib/raop_rtp.c
+index 9b7930b..c9993e5 100644
+--- a/lib/raop_rtp.c
++++ b/lib/raop_rtp.c
+@@ -97,6 +97,9 @@ struct raop_rtp_s {
+ 
+     /* Sockets for control and data */
+     int csock, dsock;
++    /* add-ons for accessing kernel recv timetamps */
++    kernel_timestamp_session_t *rtp_session_csock;
++    kernel_timestamp_session_t *rtp_session_dsock;
+ 
+     /* Local control, timing and data ports */
+     unsigned short control_lport;
+@@ -244,6 +247,18 @@ raop_rtp_init_sockets(raop_rtp_t *raop_rtp, int use_ipv6)
+         goto sockets_cleanup;
+     }
+ 
++    raop_rtp->rtp_session_csock = kernel_timestamp_session_create(csock);
++    if (raop_rtp->rtp_session_csock == NULL) {
++        logger_log(raop_rtp->logger, LOGGER_ERR, "raop_rtp: Failed to allocate high-precision session context (csock)");
++        goto sockets_cleanup;
++    }
++
++    raop_rtp->rtp_session_dsock = kernel_timestamp_session_create(dsock);
++    if (raop_rtp->rtp_session_dsock == NULL) {
++        logger_log(raop_rtp->logger, LOGGER_ERR, "raop_rtp: Failed to allocate high-precision session context (dsock)");
++        goto sockets_cleanup;
++    }
++    
+     /* Set socket descriptors */
+     raop_rtp->csock = csock;
+     raop_rtp->dsock = dsock;
+@@ -256,8 +271,22 @@ raop_rtp_init_sockets(raop_rtp_t *raop_rtp, int use_ipv6)
+     return 0;
+ 
+     sockets_cleanup:
+-    if (csock != -1) CLOSESOCKET(csock);
+-    if (dsock != -1) CLOSESOCKET(dsock);
++    if (raop_rtp->rtp_session_csock != NULL) {
++        kernel_timestamp_session_destroy(raop_rtp->rtp_session_csock);
++        raop_rtp->rtp_session_csock = NULL;
++    } else if (csock != -1) {
++        // Fallback to protect if the handle crashed out before session instantiation
++        CLOSESOCKET(csock);
++    }
++
++    if (raop_rtp->rtp_session_dsock != NULL) {
++        kernel_timestamp_session_destroy(raop_rtp->rtp_session_dsock);
++        raop_rtp->rtp_session_dsock = NULL;
++    } else if (dsock != -1) {
++        // Fallback to protect if the handle crashed out before session instantiation
++        CLOSESOCKET(dsock);
++    }
++
+     return -1;
+ }
+ 
+@@ -382,7 +411,7 @@ raop_rtp_thread_udp(void *arg)
+     raop_rtp_t *raop_rtp = arg;
+     unsigned char packet[RAOP_PACKET_LEN];
+     unsigned int packetlen = 0;
+-    struct sockaddr_storage saddr;
++    struct sockaddr_storage saddr = {0};
+     socklen_t saddrlen = 0;
+     bool got_remote_control_saddr = false;
+     uint64_t video_arrival_offset = 0;
+@@ -447,17 +476,19 @@ raop_rtp_thread_udp(void *arg)
+         }
+ 
+         if (FD_ISSET(raop_rtp->csock, &rfds)) {
++            uint64_t kernel_recv_time_microsecs = 0;
+             if (got_remote_control_saddr== false) {
+                 saddrlen = sizeof(saddr);
+-                packetlen = recvfrom(raop_rtp->csock, (char *)packet, sizeof(packet), 0,
+-                                     (struct sockaddr *)&saddr, &saddrlen);
++                packetlen = kernel_timestamp_session_recv(raop_rtp->rtp_session_csock, (char *) packet, sizeof(packet),
++                                                          &kernel_recv_time_microsecs, (void *) &saddr, (int *) &saddrlen);
+                 if (packetlen > 0) {
+                     memcpy(&raop_rtp->control_saddr, &saddr, saddrlen);
+                     raop_rtp->control_saddr_len = saddrlen;
+                     got_remote_control_saddr = true;
+                 }
+             } else {
+-                packetlen = recvfrom(raop_rtp->csock, (char *)packet, sizeof(packet), 0, NULL, NULL);
++                packetlen = kernel_timestamp_session_recv(raop_rtp->rtp_session_csock, (char *) packet, sizeof(packet),
++                                                          &kernel_recv_time_microsecs, NULL, NULL);
+             }
+             int type_c = packet[1] & ~0x80;
+             logger_log(raop_rtp->logger, LOGGER_DEBUG, "\nraop_rtp type_c 0x%02x, packetlen = %d", type_c, packetlen);
+@@ -562,12 +593,15 @@ raop_rtp_thread_udp(void *arg)
+             }
+             //logger_log(raop_rtp->logger, LOGGER_INFO, "Would have data packet in queue");
+             // Receiving audio data here
+-            saddrlen = sizeof(saddr);
+-            packetlen = recvfrom(raop_rtp->dsock, (char *)packet, sizeof(packet), 0, NULL, NULL);
++
+             // rtp payload type
+             //int type_d = packet[1] & ~0x80;
+             //logger_log(raop_rtp->logger, LOGGER_DEBUG, "raop_rtp_thread_udp type_d 0x%02x, packetlen = %d", type_d, packetlen);
+-	    
++
++            saddrlen = sizeof(saddr);
++            uint64_t kernel_recv_time_microsecs = 0;
++            packetlen = kernel_timestamp_session_recv(raop_rtp->rtp_session_dsock, (char *) packet, sizeof(packet),
++                                                      &kernel_recv_time_microsecs, NULL, NULL);
+             if (packetlen < 12)  {
+                 if (logger_debug) {
+                     char *str = utils_data_to_string(packet, packetlen, 16);
