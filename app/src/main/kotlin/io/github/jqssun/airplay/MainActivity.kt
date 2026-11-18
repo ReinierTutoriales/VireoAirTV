@@ -148,7 +148,7 @@ class MainActivity : ComponentActivity() {
                     onPip = { enterPip() },
                     onLocalNetwork = ::_requestLocalNetwork,
                     receiverOnly = autoLaunched.value,
-                    onLeaveReceiverOnly = { autoLaunched.value = false }
+                    onLeaveReceiverOnly = { moveTaskToBack(true) }
                 )
             }
         }

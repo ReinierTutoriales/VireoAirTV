@@ -109,6 +109,7 @@ fun MainScreen(
     onLocalNetwork: () -> Unit = {},
     // brought up for a session (Apple TV style): only the sender's picture, never the app screens
     receiverOnly: Boolean = false,
+    // Back during such a session: return to the previous app; the session keeps running
     onLeaveReceiverOnly: () -> Unit = {}
 ) {
     var tab by remember { mutableStateOf(Tab.OVERVIEW) }
@@ -536,7 +537,6 @@ fun MainScreen(
     }
 
     if (receiverOnly) {
-        // Back hands over to the regular app screens, as leaving fullscreen does
         BackHandler { onLeaveReceiverOnly() }
         if (mirroringActive) {
             FullscreenVideo(
