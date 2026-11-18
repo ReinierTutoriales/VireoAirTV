@@ -167,11 +167,15 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     // recent /playback-info polls with no playback = pending video; polls start ~1s before /play
     @Volatile private var _lastVideoPollAt = 0L
     @Volatile private var _videoPollSuppressed = false
+    // sender-side end (track change, autoplay): keep the video screen until the next /play arrives
+    @Volatile private var _videoHandoffUntil = 0L
 
-    fun videoSessionPending(): Boolean =
-        !_videoPlaybackActive.value && !_audioOnly.value && !_mirroringActive.value &&
-            !_videoPollSuppressed &&
-            SystemClock.elapsedRealtime() - _lastVideoPollAt < VIDEO_POLL_PENDING_TIMEOUT_MS
+    fun videoSessionPending(): Boolean {
+        if (_videoPlaybackActive.value || _audioOnly.value || _mirroringActive.value) return false
+        val now = SystemClock.elapsedRealtime()
+        if (now < _videoHandoffUntil && _connectionCount.value > 0) return true
+        return !_videoPollSuppressed && now - _lastVideoPollAt < VIDEO_POLL_PENDING_TIMEOUT_MS
+    }
 
     // set once mirroring reports a real size; stops with session
     private val _mirroringActive = MutableStateFlow(false)
@@ -603,6 +607,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackInfo.value = VideoPlaybackInfo()
         _lastVideoPollAt = 0
         _videoPollSuppressed = false
+        _videoHandoffUntil = 0L
         _coverArtBytes = null
         _trackInfo.value = TrackInfo()
         _positionMs.value = 0
@@ -656,16 +661,18 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         airPlayVideoPlayer.seekBy(deltaMs)
     }
 
-    fun stopVideoPlayback() = _endVideoPlayback("AirPlay Video stopped (local)")
+    fun stopVideoPlayback() = _endVideoPlayback("AirPlay Video stopped (local)", handoff = false)
 
     fun downloadVideo() {
         _videoLocation.value?.let { videoDownloader.start(it) }
     }
 
-    private fun _endVideoPlayback(message: String) {
+    // handoff = the sender (or the end of the item) stopped it: a next item usually follows within seconds
+    private fun _endVideoPlayback(message: String, handoff: Boolean = true) {
         if (!_videoPlaybackActive.value) return
         // lingering polls after a stop must not bounce the UI back to a pending session
         _videoPollSuppressed = true
+        _videoHandoffUntil = if (handoff) SystemClock.elapsedRealtime() + VIDEO_HANDOFF_GRACE_MS else 0L
         _videoPlaybackActive.value = false
         airPlayVideoPlayer.stop()
         if (!_audioOnly.value) _setSessionActive(false)
@@ -707,6 +714,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoLocation.value = location
         _videoPlaySeq.value++
         _videoPollSuppressed = false
+        _videoHandoffUntil = 0L
         _videoPlaybackInfo.value = VideoPlaybackInfo(positionMs = (startPositionSeconds * 1000).toLong())
         _videoPlaybackAspect.value = 16f / 9f
         _videoPlaybackSize.value = null
@@ -862,6 +870,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _audioOnly.value = false
             _lastVideoPollAt = 0
             _videoPollSuppressed = false
+            _videoHandoffUntil = 0L
             _coverArtBytes = null
             _trackInfo.value = TrackInfo()
             _positionMs.value = 0
@@ -1324,6 +1333,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val COVER_ART_MAX_PX = 720
         private const val COVER_ART_JPEG_QUALITY = 90
         const val VIDEO_POLL_PENDING_TIMEOUT_MS = 3_000L
+        // long enough for a sender to queue the next track, short enough that a real stop still exits
+        const val VIDEO_HANDOFF_GRACE_MS = 6_000L
 
         private const val AUDIO_CONFIG_DEBOUNCE_MS = 500L
         private const val SERVER_RESTART_DEBOUNCE_MS = 500L

@@ -318,6 +318,8 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             }
             launch {
                 svc.videoPlaybackActive.collect { active ->
+                    // update pending in the same step so the video screen never sees active=false, pending=stale
+                    _videoSessionPending.value = svc.videoSessionPending()
                     _videoPlaybackActive.value = active
                     if (!active) {
                         _videoPositionMs.value = 0
