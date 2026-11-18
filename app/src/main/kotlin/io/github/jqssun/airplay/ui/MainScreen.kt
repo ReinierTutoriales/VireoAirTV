@@ -1,12 +1,18 @@
 package io.github.jqssun.airplay.ui
 
+import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.annotation.OptIn as AndroidxOptIn
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,24 +27,30 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.BrightnessHigh
 import androidx.compose.material3.*
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.*
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import android.content.Context
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -48,27 +60,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import io.github.jqssun.airplay.Prefs
-import io.github.jqssun.airplay.R
-import io.github.jqssun.airplay.service.AirPlayService.ServerState
-import io.github.jqssun.airplay.ui.gestures.BrightnessState
-import io.github.jqssun.airplay.ui.gestures.DoubleTapIndicator
-import io.github.jqssun.airplay.ui.gestures.GestureInfoText
-import io.github.jqssun.airplay.ui.gestures.SeekGestureState
-import io.github.jqssun.airplay.ui.gestures.TapGestureState
-import io.github.jqssun.airplay.ui.gestures.VerticalGesture
-import io.github.jqssun.airplay.ui.gestures.VideoContentScale
-import io.github.jqssun.airplay.ui.gestures.VerticalProgressIndicator
-import io.github.jqssun.airplay.ui.gestures.VideoPlayerGestures
-import io.github.jqssun.airplay.ui.gestures.VolumeAndBrightnessGestureState
-import io.github.jqssun.airplay.ui.gestures.ServerVolumeState
-import io.github.jqssun.airplay.ui.gestures.ZoomState
-import io.github.jqssun.airplay.viewmodel.DebugInfo
-import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
-import io.github.jqssun.airplay.viewmodel.MainViewModel
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.ui.compose.material3.MiniController
@@ -78,6 +69,26 @@ import androidx.media3.ui.compose.material3.buttons.PreviousButton
 import androidx.media3.ui.compose.material3.indicator.DurationText
 import androidx.media3.ui.compose.material3.indicator.PositionText
 import androidx.media3.ui.compose.material3.indicator.ProgressSlider
+import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
+import io.github.jqssun.airplay.Prefs
+import io.github.jqssun.airplay.R
+import io.github.jqssun.airplay.audio.TrackInfo
+import io.github.jqssun.airplay.service.AirPlayService.ServerState
+import io.github.jqssun.airplay.ui.gestures.BrightnessState
+import io.github.jqssun.airplay.ui.gestures.DoubleTapIndicator
+import io.github.jqssun.airplay.ui.gestures.GestureInfoText
+import io.github.jqssun.airplay.ui.gestures.SeekGestureState
+import io.github.jqssun.airplay.ui.gestures.ServerVolumeState
+import io.github.jqssun.airplay.ui.gestures.TapGestureState
+import io.github.jqssun.airplay.ui.gestures.VerticalGesture
+import io.github.jqssun.airplay.ui.gestures.VerticalProgressIndicator
+import io.github.jqssun.airplay.ui.gestures.VideoContentScale
+import io.github.jqssun.airplay.ui.gestures.VideoPlayerGestures
+import io.github.jqssun.airplay.ui.gestures.VolumeAndBrightnessGestureState
+import io.github.jqssun.airplay.ui.gestures.ZoomState
+import io.github.jqssun.airplay.viewmodel.DebugInfo
+import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
+import io.github.jqssun.airplay.viewmodel.MainViewModel
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -891,10 +902,30 @@ private fun AudioMiniController(viewModel: MainViewModel, visible: Boolean, onCl
 }
 
 @Composable
-@AndroidxOptIn(UnstableApi::class)
 private fun NowPlayingContent(viewModel: MainViewModel) {
     val track by viewModel.trackInfo.collectAsState()
+    val hasArt = track.coverArt != null
+    // over the dimmed backdrop, text and icons read as on tvOS: white and translucent white
+    val base = MaterialTheme.colorScheme
+    val colors = if (hasArt) base.copy(
+        onSurface = Color.White,
+        onSurfaceVariant = Color.White.copy(alpha = 0.72f),
+        surfaceContainerHighest = Color.White.copy(alpha = 0.12f)
+    ) else base
 
+    Box(Modifier.fillMaxSize()) {
+        ArtworkBackdrop(track.coverArt, Modifier.matchParentSize())
+        MaterialTheme(colorScheme = colors) {
+            CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
+                NowPlayingColumn(viewModel, track, hasArt)
+            }
+        }
+    }
+}
+
+@Composable
+@AndroidxOptIn(UnstableApi::class)
+private fun NowPlayingColumn(viewModel: MainViewModel, track: TrackInfo, hasArt: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -902,65 +933,90 @@ private fun NowPlayingContent(viewModel: MainViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // cover art
+        val player = viewModel.dacpPlayer
+        // artwork recedes while paused, like the Music app
+        val playing = player?.let { !rememberPlayPauseButtonState(it).showPlay } ?: true
+        val artScale by animateFloatAsState(
+            targetValue = if (playing) 1f else 0.86f,
+            animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
+            label = "artScale"
+        )
+        val artShape = RoundedCornerShape(16.dp)
         Box(
             modifier = Modifier
                 .weight(1f, fill = false)
                 .aspectRatio(1f)
                 .fillMaxWidth(0.7f)
-                .clip(RoundedCornerShape(16.dp))
+                .graphicsLayer { scaleX = artScale; scaleY = artScale }
+                .shadow(if (hasArt) 24.dp else 0.dp, artShape)
+                .clip(artShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center
         ) {
-            if (track.coverArt != null) {
-                Image(
-                    bitmap = track.coverArt!!.asImageBitmap(),
-                    contentDescription = stringResource(R.string.cd_cover_art),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    Icons.Default.MusicNote,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                )
+            Crossfade(
+                targetState = track.coverArt,
+                animationSpec = tween(Motion.LONG_MS, easing = Motion.Ease),
+                label = "coverArt"
+            ) { art ->
+                if (art != null) {
+                    Image(
+                        bitmap = art.asImageBitmap(),
+                        contentDescription = stringResource(R.string.cd_cover_art),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.MusicNote,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        )
+                    }
+                }
             }
         }
 
         Spacer(Modifier.height(20.dp))
 
         // track info
-        Text(
-            text = track.title.ifEmpty { stringResource(R.string.unknown_track) },
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (track.artist.isNotEmpty()) {
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (track.album.isNotEmpty()) {
-            Text(
-                text = track.album,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Crossfade(
+            targetState = Triple(track.title, track.artist, track.album),
+            animationSpec = tween(Motion.MEDIUM_MS, easing = Motion.Ease),
+            label = "trackText"
+        ) { (title, artist, album) ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = title.ifEmpty { stringResource(R.string.unknown_track) },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (artist.isNotEmpty()) {
+                    Text(
+                        text = artist,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (album.isNotEmpty()) {
+                    Text(
+                        text = album,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        val player = viewModel.dacpPlayer
         if (player != null) {
             // BottomControls' default row, minus its video-overlay gradient
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
