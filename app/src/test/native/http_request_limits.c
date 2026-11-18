@@ -1,4 +1,5 @@
-/* UxPlay patch 0030: request head and body are bounded. */
+/* UxPlay patch 0030: request head and body are bounded.
+ * Patch 0053 (llhttp 9.4.4): the RTSP and HTTP requests an iPhone sends still parse. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +30,28 @@ int main(void) {
     memset(chunk, 'a', 1 << 17);
     http_request_add_data(r, chunk, 1 << 17);
     if (!http_request_has_error(r)) return fail("128 KiB header accepted");
+    http_request_destroy(r);
+
+    /* as sent by iOS: RTSP SETUP with a binary plist body, then an AirPlay video request */
+    r = http_request_init();
+    const char setup[] = "SETUP rtsp://192.168.1.2/1234 RTSP/1.0\r\nContent-Length: 4\r\n"
+                         "Content-Type: application/x-apple-binary-plist\r\nCSeq: 3\r\n"
+                         "DACP-ID: FDEBD2B3CFFA48D0\r\nActive-Remote: 2096196447\r\n"
+                         "User-Agent: AirPlay/980.77.1\r\n\r\nbp\x00\x01";
+    http_request_add_data(r, setup, sizeof(setup) - 1);
+    if (http_request_has_error(r) || !http_request_is_complete(r)) return fail("RTSP SETUP rejected");
+    if (strcmp(http_request_get_method(r), "SETUP") || strcmp(http_request_get_protocol(r), "RTSP/1.0")) return fail("RTSP SETUP parsed wrong");
+    if (strcmp(http_request_get_header(r, "CSeq"), "3")) return fail("RTSP CSeq header");
+    int len = 0;
+    const char *body = http_request_get_data(r, &len);
+    if (len != 4 || memcmp(body, "bp\x00\x01", 4)) return fail("RTSP binary body");
+    http_request_destroy(r);
+
+    r = http_request_init();
+    const char *play = "POST /play HTTP/1.1\r\nX-Apple-Session-ID: 1F1E\r\nContent-Length: 0\r\n\r\n";
+    http_request_add_data(r, play, strlen(play));
+    if (http_request_has_error(r) || !http_request_is_complete(r)) return fail("POST /play rejected");
+    if (strcmp(http_request_get_url(r), "/play")) return fail("POST /play url");
     http_request_destroy(r);
 
     free(chunk);
