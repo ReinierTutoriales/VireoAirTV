@@ -705,8 +705,11 @@ private fun OverviewContent(
     val debugInfo by viewModel.debugInfo.collectAsState()
     val tv = isTv()
     val startFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        if (tv) startFocus.requestFocus()
+    val nowPlayingFocus = remember { FocusRequester() }
+    // on return from full screen OK must reopen Now Playing, not land on Stop and end the server
+    val nowPlayingCard = tv && showAudioMode && state == ServerState.RUNNING && connections > 0
+    LaunchedEffect(nowPlayingCard) {
+        if (tv) runCatching { (if (nowPlayingCard) nowPlayingFocus else startFocus).requestFocus() }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -724,7 +727,8 @@ private fun OverviewContent(
                 !mirroringActive && !videoPlaybackActive
             if (showAudioMode && state == ServerState.RUNNING && connections > 0) {
                 // on a TV the card shows the same Apple TV style screen as full screen
-                if (isTv()) NowPlayingTvCard(viewModel, onOpen = onFullscreen) else NowPlayingContent(viewModel, onFullscreen = onFullscreen)
+                if (tv) NowPlayingTvCard(viewModel, onOpen = onFullscreen, focusRequester = nowPlayingFocus)
+                else NowPlayingContent(viewModel, onFullscreen = onFullscreen)
             } else {
                 if (state == ServerState.RUNNING && (mirroringActive || idlePreview)) {
                     video()
@@ -1050,19 +1054,15 @@ private fun AudioMiniController(viewModel: MainViewModel, visible: Boolean, onCl
     )
 }
 
+// phones and tablets; a TV uses NowPlayingTvCard / NowPlayingTvScreen
 @Composable
 @AndroidxOptIn(UnstableApi::class)
-private fun NowPlayingContent(
-    viewModel: MainViewModel,
-    fullscreen: Boolean = false,
-    onFullscreen: (() -> Unit)? = null,
-    onExitFullscreen: (() -> Unit)? = null,
-) {
+private fun NowPlayingContent(viewModel: MainViewModel, onFullscreen: () -> Unit) {
     val track by viewModel.trackInfo.collectAsState()
     val hasArt = track.coverArt != null
     // over the dimmed backdrop, text and icons read as on tvOS: white and translucent white
     val base = MaterialTheme.colorScheme
-    val colors = if (hasArt || fullscreen) base.copy(
+    val colors = if (hasArt) base.copy(
         onSurface = Color.White,
         onSurfaceVariant = Color.White.copy(alpha = 0.72f),
         surfaceContainerHighest = Color.White.copy(alpha = 0.12f)
@@ -1076,143 +1076,45 @@ private fun NowPlayingContent(
         animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
         label = "artScale"
     )
-
-    var controlsVisible by remember(fullscreen) { mutableStateOf(true) }
-    var wakeTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(fullscreen, wakeTick) {
-        if (!fullscreen) {
-            controlsVisible = true
-            return@LaunchedEffect
-        }
-        controlsVisible = true
-        delay(AUDIO_CONTROLS_HIDE_MS)
-        controlsVisible = false
-    }
-
-    var feedbackIcon by remember { mutableStateOf<ImageVector?>(null) }
-    var feedbackTick by remember { mutableIntStateOf(0) }
-    fun send(command: SenderCommand, icon: ImageVector): Boolean {
-        if (!viewModel.senderCommand(command)) return false
-        feedbackIcon = icon
-        feedbackTick++
-        return true
-    }
-
-    val rootFocus = remember { FocusRequester() }
     val playPauseFocus = remember { FocusRequester() }
-    LaunchedEffect(fullscreen, controlsVisible) {
-        if (!fullscreen) return@LaunchedEffect
-        if (controlsVisible) playPauseFocus.requestFocusUntilLanded(attempts = 5)
-        else runCatching { rootFocus.requestFocus() }
-    }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(if (fullscreen) Modifier.background(Color.Black) else Modifier)
-            .pointerInput(fullscreen) {
-                if (fullscreen) detectTapGestures { wakeTick++ }
-            }
-            .onPreviewKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (e.key) {
-                    Key.MediaPlayPause -> send(
-                        SenderCommand.PLAY_PAUSE,
-                        if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
-                    )
-                    Key.MediaPlay -> send(SenderCommand.PLAY, Icons.Rounded.PlayArrow)
-                    Key.MediaPause -> send(SenderCommand.PAUSE, Icons.Rounded.Pause)
-                    Key.MediaNext -> send(SenderCommand.NEXT, Icons.Rounded.SkipNext)
-                    Key.MediaPrevious -> send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious)
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                        if (fullscreen && !controlsVisible) {
-                            send(
-                                SenderCommand.PLAY_PAUSE,
-                                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
-                            )
-                        } else {
-                            wakeTick++
-                            false
-                        }
-                    }
-                    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight -> {
-                        val hidden = fullscreen && !controlsVisible
-                        wakeTick++
-                        hidden
-                    }
-                    else -> false
-                }
-            }
-            .then(if (fullscreen) Modifier.focusRequester(rootFocus).focusable() else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         ArtworkBackdrop(track.coverArt, Modifier.matchParentSize())
         MaterialTheme(colorScheme = colors) {
             CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val landscape = maxWidth > maxHeight
-                    if (landscape) {
+                    if (maxWidth > maxHeight) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(
-                                    horizontal = if (fullscreen) 56.dp else 24.dp,
-                                    vertical = if (fullscreen) 36.dp else 16.dp
-                                ),
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(
-                                if (fullscreen) 48.dp else 24.dp,
-                                Alignment.CenterHorizontally
-                            )
+                            horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
                         ) {
                             NowPlayingArtwork(
                                 coverArt = track.coverArt,
                                 hasArt = hasArt,
                                 artScale = artScale,
-                                modifier = Modifier
-                                    .fillMaxHeight(if (fullscreen) 0.78f else 0.88f)
-                                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                                modifier = Modifier.fillMaxHeight(0.88f).aspectRatio(1f, matchHeightConstraintsFirst = true)
                             )
-                            // centred when it fits; the Overview card can be shorter than text, progress,
-                            // transport and both volume rows, so the column scrolls instead of being cut off
+                            // centred when it fits; the card can be shorter than text, progress, transport and
+                            // both volume rows, so the column scrolls instead of being cut off
                             Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .widthIn(max = 560.dp)
-                                    .fillMaxHeight(),
+                                modifier = Modifier.weight(1f).widthIn(max = 560.dp).fillMaxHeight(),
                                 contentAlignment = Alignment.CenterStart
                             ) {
-                            Column(
-                                modifier = Modifier.verticalScroll(rememberScrollState()),
-                                horizontalAlignment = Alignment.Start
-                            ) {
-                                NowPlayingTrackText(track = track, fullscreen = fullscreen, centered = false)
-                                if (player != null) {
-                                    Spacer(Modifier.height(if (fullscreen) 20.dp else 10.dp))
-                                    NowPlayingProgress(player)
-                                    androidx.compose.animation.AnimatedVisibility(
-                                        visible = controlsVisible,
-                                        enter = androidx.compose.animation.fadeIn(tween(Motion.SHORT_MS, easing = Motion.Ease)),
-                                        exit = androidx.compose.animation.fadeOut(tween(Motion.MEDIUM_MS, easing = Motion.Ease))
-                                    ) {
-                                        Column {
-                                            Spacer(Modifier.height(if (fullscreen) 16.dp else 8.dp))
-                                            NowPlayingTransportAndVolume(
-                                                viewModel = viewModel,
-                                                player = player,
-                                                playPauseFocus = playPauseFocus
-                                            )
-                                        }
+                                Column(Modifier.verticalScroll(rememberScrollState())) {
+                                    NowPlayingTrackText(track = track, fullscreen = false, centered = false)
+                                    if (player != null) {
+                                        Spacer(Modifier.height(10.dp))
+                                        NowPlayingProgress(player)
+                                        Spacer(Modifier.height(8.dp))
+                                        NowPlayingTransportAndVolume(viewModel, player, playPauseFocus)
                                     }
                                 }
-                            }
                             }
                         }
                     } else {
                         Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
@@ -1226,61 +1128,28 @@ private fun NowPlayingContent(
                                     .fillMaxWidth(0.7f)
                             )
                             Spacer(Modifier.height(20.dp))
-                            NowPlayingTrackText(track = track, fullscreen = fullscreen, centered = true)
+                            NowPlayingTrackText(track = track, fullscreen = false, centered = true)
                             if (player != null) {
                                 Spacer(Modifier.height(16.dp))
                                 NowPlayingProgress(player)
-                                androidx.compose.animation.AnimatedVisibility(
-                                    visible = controlsVisible,
-                                    enter = androidx.compose.animation.fadeIn(tween(Motion.SHORT_MS, easing = Motion.Ease)),
-                                    exit = androidx.compose.animation.fadeOut(tween(Motion.MEDIUM_MS, easing = Motion.Ease))
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Spacer(Modifier.height(8.dp))
-                                        NowPlayingTransportAndVolume(
-                                            viewModel = viewModel,
-                                            player = player,
-                                            playPauseFocus = playPauseFocus
-                                        )
-                                    }
-                                }
+                                Spacer(Modifier.height(8.dp))
+                                NowPlayingTransportAndVolume(viewModel, player, playPauseFocus)
                             }
                         }
                     }
-
-                    if (onFullscreen != null) {
-                        IconButton(
-                            onClick = onFullscreen,
-                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).dpadFocus()
-                        ) {
-                            Icon(
-                                Icons.Default.Fullscreen,
-                                contentDescription = stringResource(R.string.cd_fullscreen),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                    if (onExitFullscreen != null) {
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = controlsVisible,
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        ) {
-                            IconButton(
-                                onClick = onExitFullscreen,
-                                modifier = Modifier.padding(8.dp).dpadFocus()
-                            ) {
-                                Icon(
-                                    Icons.Default.FullscreenExit,
-                                    contentDescription = stringResource(R.string.cd_exit_fullscreen),
-                                    tint = Color.White.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
+                    IconButton(
+                        onClick = onFullscreen,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).dpadFocus()
+                    ) {
+                        Icon(
+                            Icons.Default.Fullscreen,
+                            contentDescription = stringResource(R.string.cd_fullscreen),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
         }
-        CommandFeedback(feedbackIcon, feedbackTick)
     }
 }
 
@@ -1489,7 +1358,6 @@ private fun VolumeSlider(
     }
 }
 
-private const val AUDIO_CONTROLS_HIDE_MS = 5000L
 
 // sender has 16 volume steps above mute
 private const val CLIENT_VOLUME_STEP = 1f / 16
