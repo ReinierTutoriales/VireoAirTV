@@ -946,15 +946,21 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     override fun onConnectionFeedback() {
         _lastFeedbackNs = System.nanoTime()
+        _feedbackSeen = true
     }
 
     // a client that stops sending /feedback is gone (sleep, Wi-Fi lost, out of range): its last frame
     // would stay on screen and block new senders, so drop it after the same limit as UxPlay (-reset 15)
     @Volatile private var _lastFeedbackNs = 0L
+    // only a client that has sent /feedback is held to it; AirPlay video (HLS) has its own polling
+    @Volatile private var _feedbackSeen = false
     private val _feedbackWatchdog = object : Runnable {
         override fun run() {
             val silentMs = (System.nanoTime() - _lastFeedbackNs) / 1_000_000
-            if (_connectionCount.value > 0 && silentMs > MISSED_FEEDBACK_LIMIT_MS) {
+            if (_connectionCount.value == 0) _feedbackSeen = false
+            // HLS playback counts as alive, so its end does not look like a long silence
+            if (_videoPlaybackActive.value) _lastFeedbackNs = System.nanoTime()
+            else if (_connectionCount.value > 0 && _feedbackSeen && silentMs > MISSED_FEEDBACK_LIMIT_MS) {
                 log("No feedback from the client for ${silentMs / 1000} s; dropping it")
                 _restartServer()
             }
