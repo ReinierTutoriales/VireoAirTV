@@ -11,9 +11,6 @@
 #include "android_raop_callbacks.h"
 #include "audio_engine.h"
 
-/* 1 MiB covers typical 1080p mirroring frames; larger keyframes double it once */
-#define VIDEO_BUF_INITIAL (1u << 20)
-
 #define TAG "AirPlayNative"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -36,10 +33,6 @@ static JNIEnv *_get_env(android_callback_ctx_t *ctx) {
 void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject callback_obj) {
     (*env)->GetJavaVM(env, &ctx->jvm);
     ctx->callback_obj = (*env)->NewGlobalRef(env, callback_obj);
-    pthread_mutex_init(&ctx->video_buf_lock, NULL);
-    ctx->video_buf = NULL;
-    ctx->video_buf_cap = 0;
-    ctx->video_bb = NULL;
     ctx->h265_enabled = 1;
     ctx->require_pin = 0;
     ctx->registered_count = 0;
@@ -56,7 +49,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->playback_ready = 0;
 
     jclass cls = (*env)->GetObjectClass(env, callback_obj);
-    ctx->on_video_data = (*env)->GetMethodID(env, cls, "onVideoData", "(Ljava/nio/ByteBuffer;IJZ)V");
+    ctx->on_video_data = (*env)->GetMethodID(env, cls, "onVideoData", "([BJZ)V");
     ctx->on_audio_format = (*env)->GetMethodID(env, cls, "onAudioFormat", "(IIZ)V");
     ctx->on_video_size = (*env)->GetMethodID(env, cls, "onVideoSize", "(FFFF)V");
     ctx->on_client_volume = (*env)->GetMethodID(env, cls, "onClientVolume", "(F)V");
@@ -80,16 +73,6 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
 }
 
 void android_callbacks_destroy(android_callback_ctx_t *ctx, JNIEnv *env) {
-    pthread_mutex_lock(&ctx->video_buf_lock);
-    if (ctx->video_bb) {
-        (*env)->DeleteGlobalRef(env, ctx->video_bb);
-        ctx->video_bb = NULL;
-    }
-    free(ctx->video_buf);
-    ctx->video_buf = NULL;
-    ctx->video_buf_cap = 0;
-    pthread_mutex_unlock(&ctx->video_buf_lock);
-    pthread_mutex_destroy(&ctx->video_buf_lock);
     if (ctx->callback_obj) {
         (*env)->DeleteGlobalRef(env, ctx->callback_obj);
         ctx->callback_obj = NULL;
@@ -136,30 +119,12 @@ static void _video_process(void *cls, raop_ntp_t *ntp, video_decode_struct *data
         return;
     }
 
-    pthread_mutex_lock(&ctx->video_buf_lock);
-    size_t len = (size_t)data->data_len;
-    if (len > ctx->video_buf_cap) {
-        /* grow geometrically so a resolution bump does not reallocate frame after frame */
-        size_t cap = ctx->video_buf_cap ? ctx->video_buf_cap : VIDEO_BUF_INITIAL;
-        while (cap < len) cap *= 2;
-        void *buf = realloc(ctx->video_buf, cap);
-        jobject bb = buf ? (*env)->NewDirectByteBuffer(env, buf, (jlong)cap) : NULL;
-        jobject global = bb ? (*env)->NewGlobalRef(env, bb) : NULL;
-        if (bb) (*env)->DeleteLocalRef(env, bb);
-        if (ctx->video_bb) (*env)->DeleteGlobalRef(env, ctx->video_bb);
-        ctx->video_bb = global;
-        if (buf) ctx->video_buf = buf;
-        ctx->video_buf_cap = global ? cap : 0;
-        if (!global) {
-            pthread_mutex_unlock(&ctx->video_buf_lock);
-            LOGE("video buffer allocation failed, dropping %zu bytes", len);
-            return;
-        }
-    }
-    memcpy(ctx->video_buf, data->data, len);
-    (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_video_data, ctx->video_bb, (jint)len,
-                           (jlong)data->ntp_time_local, (jboolean)data->is_h265);
-    pthread_mutex_unlock(&ctx->video_buf_lock);
+    jbyteArray arr = (*env)->NewByteArray(env, data->data_len);
+    if (!arr) return; /* OutOfMemoryError pending; _get_env clears it on the next callback */
+    (*env)->SetByteArrayRegion(env, arr, 0, data->data_len, (jbyte *)data->data);
+    (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_video_data,
+                           arr, (jlong)data->ntp_time_local, (jboolean)data->is_h265);
+    (*env)->DeleteLocalRef(env, arr);
 }
 
 static void _conn_init(void *cls) {

@@ -6,7 +6,6 @@ import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.util.Log
 import android.view.Surface
-import java.nio.ByteBuffer
 import io.github.jqssun.airplay.renderer.DecoderSelector.Companion.videoCaps
 
 class VideoRenderer(ctx: Context) {
@@ -124,16 +123,14 @@ class VideoRenderer(ctx: Context) {
         benchmarkLogCallback?.invoke(msg)
     }
 
-    // data is reused by native code after this returns: consume it here, never keep it
-    fun feedFrame(data: ByteBuffer, size: Int, ntpTimeNs: Long, isH265: Boolean) {
+    fun feedFrame(data: ByteArray, ntpTimeNs: Long, isH265: Boolean) {
         synchronized(lock) {
-            data.clear().limit(size)
-            _updateStats(size)
+            _updateStats(data.size)
             if (videoWidth == 0 || videoHeight == 0) return
 
             if (codec == null || isH265 != currentH265) {
                 // a stale reference frame decodes to corruption, so wait for a keyframe to (re)start
-                if (!_isKeyframe(data, size, isH265)) {
+                if (!_isKeyframe(data, isH265)) {
                     if (codec != null) stopCodec()
                     return
                 }
@@ -142,7 +139,7 @@ class VideoRenderer(ctx: Context) {
 
             try {
                 if (codec == null) startCodec(isH265)
-                _feedToCodec(data, size, ntpTimeNs)
+                _feedToCodec(data, ntpTimeNs)
             } catch (e: Exception) {
                 Log.w(TAG, "Codec error, resetting", e)
                 stopCodec()
@@ -150,7 +147,7 @@ class VideoRenderer(ctx: Context) {
         }
     }
 
-    private fun _feedToCodec(data: ByteBuffer, size: Int, ntpTimeNs: Long) {
+    private fun _feedToCodec(data: ByteArray, ntpTimeNs: Long) {
         val c = codec ?: return
         // dropping a frame desyncs decoder until the next keyframe, but source would only send one on (re)connect
         val retries = if (firstFrameQueued) FEED_RETRIES else FIRST_FEED_RETRIES
@@ -159,8 +156,8 @@ class VideoRenderer(ctx: Context) {
             if (idx >= 0) {
                 val buf = c.getInputBuffer(idx) ?: return
                 buf.clear()
-                buf.put(data.duplicate())
-                c.queueInputBuffer(idx, 0, size, ntpTimeNs / 1000, 0)
+                buf.put(data)
+                c.queueInputBuffer(idx, 0, data.size, ntpTimeNs / 1000, 0)
                 firstFrameQueued = true
                 return
             }
@@ -169,17 +166,17 @@ class VideoRenderer(ctx: Context) {
         Log.w(TAG, "Decoder input queue full; dropping frame. drops=$droppedFrames")
     }
 
-    private fun _isKeyframe(data: ByteBuffer, size: Int, isH265: Boolean): Boolean {
-        if (size < 5) return false
+    private fun _isKeyframe(data: ByteArray, isH265: Boolean): Boolean {
+        if (data.size < 5) return false
         var i = 0
-        while (i <= size - 5) {
-            if (data.get(i) == 0.toByte() && data.get(i + 1) == 0.toByte() &&
-                data.get(i + 2) == 0.toByte() && data.get(i + 3) == 1.toByte()) {
+        while (i <= data.size - 5) {
+            if (data[i] == 0.toByte() && data[i + 1] == 0.toByte() &&
+                data[i + 2] == 0.toByte() && data[i + 3] == 1.toByte()) {
                 val key = if (isH265) {
-                    val type = (data.get(i + 4).toInt() shr 1) and 0x3F
+                    val type = (data[i + 4].toInt() shr 1) and 0x3F
                     type == 19 || type == 20 || type == 21 || type == 32 || type == 33
                 } else {
-                    val type = data.get(i + 4).toInt() and 0x1F
+                    val type = data[i + 4].toInt() and 0x1F
                     type == 5 || type == 7
                 }
                 if (key) return true

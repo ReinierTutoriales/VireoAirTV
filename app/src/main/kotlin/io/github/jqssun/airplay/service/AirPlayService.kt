@@ -68,7 +68,6 @@ import io.github.jqssun.airplay.viewmodel.DebugInfo
 import java.io.ByteArrayOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
-import java.nio.ByteBuffer
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
@@ -702,8 +701,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     // RaopCallbackHandler (called from native threads)
 
-    override fun onVideoData(data: ByteBuffer, size: Int, ntpTimeNs: Long, isH265: Boolean) {
-        videoRenderer.feedFrame(data, size, ntpTimeNs, isH265)
+    override fun onVideoData(data: ByteArray, ntpTimeNs: Long, isH265: Boolean) {
+        videoRenderer.feedFrame(data, ntpTimeNs, isH265)
     }
 
     override fun onVideoSessionPoll() {

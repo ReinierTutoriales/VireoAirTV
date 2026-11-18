@@ -49,12 +49,6 @@ typedef struct {
     pthread_cond_t play_ready_cond;
     int play_ready;
     AudioEngine *audio_engine;
-    /* one reusable direct buffer for mirroring frames: avoids a large byte[] per frame;
-       guarded because the java side reads it synchronously inside onVideoData */
-    pthread_mutex_t video_buf_lock;
-    void *video_buf;
-    size_t video_buf_cap;
-    jobject video_bb; /* global ref to a direct ByteBuffer over video_buf */
 } android_callback_ctx_t;
 
 void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject callback_obj);
