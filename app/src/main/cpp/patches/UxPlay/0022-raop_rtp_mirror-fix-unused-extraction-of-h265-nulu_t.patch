@@ -1,0 +1,34 @@
+From 9286d38f7c19c60fbc2b105eb62d883a03ab7380 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Wed, 4 Nov 2026 13:29:58 -0500
+Subject: [PATCH 22/29] raop_rtp_mirror: fix (unused) extraction of h265
+ nulu_type
+
+fixes #635
+
+(cherry picked from commit 7aaad6222c2e136723e6e3d25c3be784260c577d)
+---
+ lib/raop_rtp_mirror.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/raop_rtp_mirror.c b/lib/raop_rtp_mirror.c
+index 3bbec4f..8331bb9 100644
+--- a/lib/raop_rtp_mirror.c
++++ b/lib/raop_rtp_mirror.c
+@@ -465,14 +465,14 @@ raop_rtp_mirror_thread(void *arg)
+                     memcpy(payload_decrypted + nalu_size, nal_start_code, 4);
+                     nalu_size += 4;
+                     nalus_count++;
+-                    /* first bit of h264 nalu MUST be 0 ("forbidden_zero_bit") */
++                    /* first bit of h264/h265  nalu MUST be 0 ("forbidden_zero_bit") */
+                     if (payload_decrypted[nalu_size] & 0x80) {
+                         valid_data = false;
+                         break;
+                     }
+                     int nalu_type = 0;
+                     if (h265_video) {
+-                        nalu_type = payload_decrypted[nalu_size] & 0x7e >> 1;;
++                        nalu_type = (payload_decrypted[nalu_size] >> 1) & 0x3f;   //bits 1-6 give h265 nalu-type
+                         //logger_log(raop_rtp_mirror->logger, LOGGER_DEBUG," h265 video, NALU type %d, size %d", nalu_type, nc_len);
+                     } else {
+                         nalu_type = payload_decrypted[nalu_size] & 0x1f;
