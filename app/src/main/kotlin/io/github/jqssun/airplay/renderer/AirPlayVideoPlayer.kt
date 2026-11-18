@@ -13,6 +13,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 
 // rate is 0 while buffering; speed is the configured rate regardless of pause state
 // native reads the effective rate, overlay reads playWhenReady + speed + skipSilence
@@ -35,6 +36,11 @@ class AirPlayVideoPlayer(private val context: Context) {
     private var player: ExoPlayer? = null
     private var pendingSurface: Surface? = null
     private var clientGain = 1f
+    // shared across items so each new track starts from the measured throughput, not from scratch;
+    // the default estimate is tuned for phones on mobile data and opens TV playback at the lowest rendition
+    private val bandwidthMeter by lazy {
+        DefaultBandwidthMeter.Builder(context).setInitialBitrateEstimate(INITIAL_BITRATE_ESTIMATE_BPS).build()
+    }
 
     var onPlaybackInfo: ((PlaybackSnapshot) -> Unit)? = null
     var onVideoSize: ((width: Int, height: Int, aspect: Float) -> Unit)? = null
@@ -73,7 +79,7 @@ class AirPlayVideoPlayer(private val context: Context) {
     fun play(location: String, startPositionSeconds: Float) = mainHandler.post {
         // recycling must not report the stopped sentinel: senders poll right after /play
         _stopInternal(reportStopped = false)
-        val p = ExoPlayer.Builder(context).build().also {
+        val p = ExoPlayer.Builder(context).setBandwidthMeter(bandwidthMeter).build().also {
             it.addListener(_listener)
             pendingSurface?.let { s -> it.setVideoSurface(s) }
             it.volume = clientGain
@@ -189,5 +195,7 @@ class AirPlayVideoPlayer(private val context: Context) {
     companion object {
         private const val TAG = "AirPlayVideoPlayer"
         private const val REPORT_INTERVAL_MS = 250L
+        // LAN-connected TV; ABR still steps down if the measured throughput is lower
+        private const val INITIAL_BITRATE_ESTIMATE_BPS = 20_000_000L
     }
 }
