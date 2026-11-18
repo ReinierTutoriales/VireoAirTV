@@ -22,6 +22,9 @@ class VideoRenderer(ctx: Context) {
     private var videoWidth = 0
     private var videoHeight = 0
     private var firstFrameQueued = false
+    // drains decoder output as soon as it exists instead of waiting for the next input packet
+    private var drainThread: Thread? = null
+    @Volatile private var draining = false
 
     // stats
     @Volatile var fps = 0; private set
@@ -137,7 +140,6 @@ class VideoRenderer(ctx: Context) {
             try {
                 if (codec == null) startCodec(isH265)
                 _feedToCodec(data, ntpTimeNs)
-                drainOutput()
             } catch (e: Exception) {
                 Log.w(TAG, "Codec error, resetting", e)
                 stopCodec()
@@ -159,7 +161,6 @@ class VideoRenderer(ctx: Context) {
                 firstFrameQueued = true
                 return
             }
-            drainOutput()
         }
         droppedFrames++
         Log.w(TAG, "Decoder input queue full; dropping frame. drops=$droppedFrames")
@@ -249,9 +250,32 @@ class VideoRenderer(ctx: Context) {
         }
         codec = c
         codecName = (if (h265) "H.265" else "H.264") + " (${c.name})"
+        draining = true
+        drainThread = Thread({ _drainLoop(c) }, "VideoDrain").apply {
+            priority = Thread.MAX_PRIORITY
+            start()
+        }
+    }
+
+    // only this thread touches output buffers and the frame-timing state below
+    private fun _drainLoop(c: MediaCodec) {
+        val info = MediaCodec.BufferInfo()
+        try {
+            while (draining) {
+                val idx = c.dequeueOutputBuffer(info, DRAIN_WAIT_US)
+                if (idx >= 0) _render(c, idx, info)
+            }
+        } catch (e: IllegalStateException) {
+            // codec reset or released underneath us; stopCodec owns recovery
+            Log.w(TAG, "Output drain stopped", e)
+        }
     }
 
     private fun stopCodec() {
+        draining = false
+        // the loop wakes within DRAIN_WAIT_US; joining first keeps it off a stopped codec
+        drainThread?.join(DRAIN_JOIN_MS)
+        drainThread = null
         _frameIntervalIdx = 0
         _frameIntervalCount = 0
         _lastOutputFrameNs = 0L
@@ -266,24 +290,18 @@ class VideoRenderer(ctx: Context) {
         codec = null
     }
 
-    private fun drainOutput() {
-        val c = codec ?: return
-        val info = MediaCodec.BufferInfo()
-        while (true) {
-            val idx = c.dequeueOutputBuffer(info, 0)
-            if (idx < 0) break
-            _recordOutputFrameTime()
-            if (scheduledOutputBufferRelease) {
-                // schedule frame at VSYNC matching its NTP presentation time
-                val ptsUs = info.presentationTimeUs
-                if (_ptsBaseUs == Long.MIN_VALUE) {
-                    _ptsBaseUs = ptsUs
-                    _wallBaseNs = System.nanoTime()
-                }
-                c.releaseOutputBuffer(idx, _wallBaseNs + (ptsUs - _ptsBaseUs) * 1000L)
-            } else {
-                c.releaseOutputBuffer(idx, true)
+    private fun _render(c: MediaCodec, idx: Int, info: MediaCodec.BufferInfo) {
+        _recordOutputFrameTime()
+        if (scheduledOutputBufferRelease) {
+            // schedule frame at VSYNC matching its NTP presentation time
+            val ptsUs = info.presentationTimeUs
+            if (_ptsBaseUs == Long.MIN_VALUE) {
+                _ptsBaseUs = ptsUs
+                _wallBaseNs = System.nanoTime()
             }
+            c.releaseOutputBuffer(idx, _wallBaseNs + (ptsUs - _ptsBaseUs) * 1000L)
+        } else {
+            c.releaseOutputBuffer(idx, true)
         }
     }
 
@@ -325,5 +343,7 @@ class VideoRenderer(ctx: Context) {
         private const val FEED_WAIT_US = 20_000L
         private const val FEED_RETRIES = 10
         private const val FIRST_FEED_RETRIES = 50
+        private const val DRAIN_WAIT_US = 5_000L
+        private const val DRAIN_JOIN_MS = 100L
     }
 }
