@@ -119,6 +119,18 @@ Portado:
 Pendiente de CastBay: control de acceso por dispositivo, menú rápido (ajuste de imagen, estadísticas),
 DLNA.
 
+## Quinta pasada: FairPlay (2026-11-18, rama `develop`)
+- Parche 0044: `fairplay_setup()` indexaba `reply_message[4]` con el byte de modo `req[14]` sin
+  comprobarlo y devolvía 142 bytes de esa dirección al cliente. Cualquier equipo de la LAN podía leer
+  memoria del proceso con una sola petición `/fp-setup`, sin emparejar (ASan: global-buffer-overflow).
+- Parche 0045: `playfair_decrypt()` indexaba `message_key[4]` con `req[12]` del handshake. Un handshake
+  con modo 200 y un SETUP con `ekey` tumbaban el receptor (ASan: SEGV en `omg_hax.c:354`).
+- Parche 0046: FairPlay v2 de upstream (`6ab8bf6`, `lib/fairplay_v2` de Omar Roth, LGPL-2.1+), que usa
+  Música de macOS. El camino v3 de iOS no cambia; el parche incluye las dos comprobaciones anteriores.
+- `applyUxplayPatches` ya admite parches que crean archivos nuevos.
+- `fairplay_setup_mode.c` en `native-regress.sh` cubre los tres parches. Envío desde Música de macOS:
+  pendiente de validación física.
+
 ## Verificado
 `assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
 `scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.
