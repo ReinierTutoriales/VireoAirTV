@@ -180,6 +180,20 @@ Pendiente, con motivo:
 - jqssun #73 (TikTok), #44 (`ANNOUNCE` de PipeWire), #42 (Music Assistant/TuneBlade), #61 (perfil de
   color), #90 (confirmar conexiones), #93 (límite de 8 Mbit/s de macOS, ajuste del emisor), #26, #65, #83.
 
+## Dependencias (comprobado 2026-11-18 contra Google Maven, Maven Central y los repositorios oficiales)
+Al día con la última versión estable: AGP 9.5.1, Gradle 9.9.1, Kotlin 2.4.21, KSP 2.3.14, Compose BOM
+2026.09.00, Hilt 2.60.1, hilt-navigation 1.4.0, lifecycle 2.11.0, activity 1.13.0, core-ktx 1.19.1,
+DataStore 1.3.0, coroutines 1.11.0, Media3 1.11.1, Oboe 1.11.0, JUnit 6.1.3, NDK 30.0.16248370,
+CMake 4.1.2, OpenSSL 4.1.0, FFmpeg release/9.0 (sin commits nuevos), libplist master (sin commits nuevos).
+Solo hay versiones alpha, beta o RC por encima; no se usan.
+- llhttp 9.3.0 → 9.4.4 (parche 0053), más nuevo que UxPlay master (9.4.2).
+- `120a166` (limpieza de asserts) no aplica sobre el pin; lo que importaba va en los parches 0054
+  (nonce creado dentro de `assert()`, que release eliminaba) y 0055.
+- Commits de UxPlay sin portar, por evaluar: mejoras de HLS `6f92504`, `2b881d7` (idioma de audio y
+  subtítulos), `575c562`, `2213414`, `2136fd4`. Son funciones, no arreglos de seguridad; los arreglos
+  de seguridad posteriores al pin (`746ec0e`, `546820c`, `500579e`, `8a266a0`) ya están en él.
+- OpenSSL 4.1.1 está anunciado para el 1-12-2026.
+
 ## Verificado
 `assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
 `scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.
