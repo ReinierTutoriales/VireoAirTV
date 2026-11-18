@@ -126,11 +126,13 @@ class DacpController(ctx: Context) {
         try {
             exec.execute {
                 try {
-                    val url = "http://$host:$port$path"
+                    // IPv6 literals need brackets (and an escaped zone id) inside a URL authority
+                    val authority = if (':' in host) "[${host.replace("%", "%25")}]:$port" else "$host:$port"
+                    val url = "http://$authority$path"
                     val conn = URL(url).openConnection() as HttpURLConnection
                     conn.requestMethod = "GET"
                     conn.setRequestProperty("Active-Remote", activeRemote)
-                    conn.setRequestProperty("Host", "$host:$port")
+                    conn.setRequestProperty("Host", authority)
                     conn.connectTimeout = 2000
                     conn.readTimeout = 2000
                     val code = conn.responseCode
