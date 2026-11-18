@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) autoLaunched.value = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
+        _turnScreenOn(autoLaunched.value)
 
         val missing = buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !_granted(Manifest.permission.POST_NOTIFICATIONS)) {
@@ -234,6 +235,19 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         // launcher or notification taps from the user keep the app open after the session
         autoLaunched.value = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
+        _turnScreenOn(autoLaunched.value)
+    }
+
+    // a sender starting a picture wakes a box in standby (and the TV over HDMI-CEC, where the box sends it);
+    // only for service launches, so opening the app by hand never changes the screen state
+    private fun _turnScreenOn(on: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setTurnScreenOn(on)
+        } else {
+            @Suppress("DEPRECATION")
+            if (on) window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
     }
 
     override fun onUserLeaveHint() {
