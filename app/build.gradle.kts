@@ -22,7 +22,7 @@ val debugAbis = (findProperty("abiFilter") as String?)
 android {
     namespace = "io.github.jqssun.airplay"
     compileSdk = 37
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "30.0.16248370"
 
     if (localProps.containsKey("storeFile")) {
         signingConfigs {
