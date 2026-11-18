@@ -1,0 +1,29 @@
+From a9a71721a80f717dfb5678f0347fecf4e092f874 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Wed, 21 Oct 2026 20:49:30 -0400
+Subject: [PATCH 43/43] raop_rtp: fix memory leak
+
+kernel_timestamp_session_dsock was not destroyed on thread exit
+
+(cherry picked from commit b29411ffe30eb6b62b755af5ce6a03b2a25c2371)
+---
+ lib/raop_rtp.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/lib/raop_rtp.c b/lib/raop_rtp.c
+index 07be18f..ab032d0 100644
+--- a/lib/raop_rtp.c
++++ b/lib/raop_rtp.c
+@@ -858,7 +858,11 @@ raop_rtp_stop(raop_rtp_t *raop_rtp)
+         CLOSESOCKET(raop_rtp->csock);
+         raop_rtp->csock = -1;
+     }
+-    if (raop_rtp->dsock != -1) {
++
++    if (raop_rtp->rtp_session_dsock) {
++        kernel_timestamp_session_destroy(raop_rtp->rtp_session_dsock);
++        raop_rtp->dsock = -1;
++    } else if (raop_rtp->dsock != -1) {
+         CLOSESOCKET(raop_rtp->dsock);
+         raop_rtp->dsock = -1;
+     }
