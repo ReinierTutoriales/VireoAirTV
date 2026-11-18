@@ -41,6 +41,10 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug testDebugUnitTest lintDebug --stacktrace
 
+      # host ASan/UBSan tests for patched native code (patches applied by the build above)
+      - name: Native regression tests
+        run: ./scripts/native-regress.sh
+
       - uses: actions/upload-artifact@v7
         with:
           name: VireoAirTV-debug-${{ github.sha }}
