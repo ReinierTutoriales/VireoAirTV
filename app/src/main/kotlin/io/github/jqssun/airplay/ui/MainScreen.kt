@@ -150,12 +150,15 @@ fun MainScreen(
         }
     }
 
-    // fullscreen only once mirroring reports a size: connections rise before the kind is known
+    // fullscreen only once mirroring reports a size or audio starts: connections rise before the kind is known
     var prevMirroringActive by remember { mutableStateOf(false) }
+    var prevAudioOnly by remember { mutableStateOf(false) }
     LaunchedEffect(mirroringActive, audioOnly, videoPlaybackActive, pin) {
-        val justStarted = !prevMirroringActive && mirroringActive
+        val mirrorStarted = !prevMirroringActive && mirroringActive
+        val audioStarted = !prevAudioOnly && audioOnly
         prevMirroringActive = mirroringActive
-        if (justStarted && !audioOnly && !videoPlaybackActive && autoFullscreen && pin == null) {
+        prevAudioOnly = audioOnly
+        if ((mirrorStarted || audioStarted) && !videoPlaybackActive && autoFullscreen && pin == null) {
             fullscreen = true
         }
     }
@@ -591,12 +594,20 @@ fun MainScreen(
         }
     } else if (fullscreen) {
         BackHandler { fullscreen = false }
-        FullscreenVideo(
-            viewModel = viewModel,
-            video = video,
-            onExitFullscreen = { fullscreen = false },
-            onPip = onPip
-        )
+        if (audioOnly && connections > 0) {
+            NowPlayingContent(
+                viewModel = viewModel,
+                fullscreen = true,
+                onExitFullscreen = { fullscreen = false }
+            )
+        } else {
+            FullscreenVideo(
+                viewModel = viewModel,
+                video = video,
+                onExitFullscreen = { fullscreen = false },
+                onPip = onPip
+            )
+        }
     } else {
         Scaffold(
             bottomBar = {
@@ -711,7 +722,7 @@ private fun OverviewContent(
             val connecting = state == ServerState.RUNNING && connections > 0 &&
                 !mirroringActive && !videoPlaybackActive
             if (showAudioMode && state == ServerState.RUNNING && connections > 0) {
-                NowPlayingContent(viewModel)
+                NowPlayingContent(viewModel, onFullscreen = onFullscreen)
             } else {
                 if (state == ServerState.RUNNING && (mirroringActive || idlePreview)) {
                     video()
@@ -1038,22 +1049,308 @@ private fun AudioMiniController(viewModel: MainViewModel, visible: Boolean, onCl
 }
 
 @Composable
-private fun NowPlayingContent(viewModel: MainViewModel) {
+@AndroidxOptIn(UnstableApi::class)
+private fun NowPlayingContent(
+    viewModel: MainViewModel,
+    fullscreen: Boolean = false,
+    onFullscreen: (() -> Unit)? = null,
+    onExitFullscreen: (() -> Unit)? = null,
+) {
     val track by viewModel.trackInfo.collectAsState()
     val hasArt = track.coverArt != null
     // over the dimmed backdrop, text and icons read as on tvOS: white and translucent white
     val base = MaterialTheme.colorScheme
-    val colors = if (hasArt) base.copy(
+    val colors = if (hasArt || fullscreen) base.copy(
         onSurface = Color.White,
         onSurfaceVariant = Color.White.copy(alpha = 0.72f),
         surfaceContainerHighest = Color.White.copy(alpha = 0.12f)
     ) else base
 
-    Box(Modifier.fillMaxSize()) {
+    val player = viewModel.dacpPlayer
+    // artwork recedes while paused, like the Music app
+    val playing = player?.let { !rememberPlayPauseButtonState(it).showPlay } ?: true
+    val artScale by animateFloatAsState(
+        targetValue = if (playing) 1f else 0.86f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
+        label = "artScale"
+    )
+
+    var controlsVisible by remember(fullscreen) { mutableStateOf(true) }
+    var wakeTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(fullscreen, wakeTick) {
+        if (!fullscreen) {
+            controlsVisible = true
+            return@LaunchedEffect
+        }
+        controlsVisible = true
+        delay(AUDIO_CONTROLS_HIDE_MS)
+        controlsVisible = false
+    }
+
+    var feedbackIcon by remember { mutableStateOf<ImageVector?>(null) }
+    var feedbackTick by remember { mutableIntStateOf(0) }
+    fun send(command: SenderCommand, icon: ImageVector): Boolean {
+        if (!viewModel.senderCommand(command)) return false
+        feedbackIcon = icon
+        feedbackTick++
+        return true
+    }
+
+    val rootFocus = remember { FocusRequester() }
+    val playPauseFocus = remember { FocusRequester() }
+    LaunchedEffect(fullscreen, controlsVisible) {
+        if (!fullscreen) return@LaunchedEffect
+        if (controlsVisible) playPauseFocus.requestFocusUntilLanded(attempts = 5)
+        else runCatching { rootFocus.requestFocus() }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (fullscreen) Modifier.background(Color.Black) else Modifier)
+            .pointerInput(fullscreen) {
+                if (fullscreen) detectTapGestures { wakeTick++ }
+            }
+            .onPreviewKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (e.key) {
+                    Key.MediaPlayPause -> send(
+                        SenderCommand.PLAY_PAUSE,
+                        if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
+                    )
+                    Key.MediaPlay -> send(SenderCommand.PLAY, Icons.Rounded.PlayArrow)
+                    Key.MediaPause -> send(SenderCommand.PAUSE, Icons.Rounded.Pause)
+                    Key.MediaNext -> send(SenderCommand.NEXT, Icons.Rounded.SkipNext)
+                    Key.MediaPrevious -> send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious)
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        if (fullscreen && !controlsVisible) {
+                            send(
+                                SenderCommand.PLAY_PAUSE,
+                                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
+                            )
+                        } else {
+                            wakeTick++
+                            false
+                        }
+                    }
+                    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight -> {
+                        val hidden = fullscreen && !controlsVisible
+                        wakeTick++
+                        hidden
+                    }
+                    else -> false
+                }
+            }
+            .then(if (fullscreen) Modifier.focusRequester(rootFocus).focusable() else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
         ArtworkBackdrop(track.coverArt, Modifier.matchParentSize())
         MaterialTheme(colorScheme = colors) {
             CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
-                NowPlayingColumn(viewModel, track, hasArt)
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val landscape = maxWidth > maxHeight
+                    if (landscape) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(
+                                    horizontal = if (fullscreen) 56.dp else 24.dp,
+                                    vertical = if (fullscreen) 36.dp else 16.dp
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(
+                                if (fullscreen) 48.dp else 24.dp,
+                                Alignment.CenterHorizontally
+                            )
+                        ) {
+                            NowPlayingArtwork(
+                                coverArt = track.coverArt,
+                                hasArt = hasArt,
+                                artScale = artScale,
+                                modifier = Modifier
+                                    .fillMaxHeight(if (fullscreen) 0.78f else 0.88f)
+                                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .widthIn(max = 560.dp),
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                NowPlayingTrackText(track = track, fullscreen = fullscreen, centered = false)
+                                if (player != null) {
+                                    Spacer(Modifier.height(if (fullscreen) 20.dp else 10.dp))
+                                    NowPlayingProgress(player)
+                                    androidx.compose.animation.AnimatedVisibility(
+                                        visible = controlsVisible,
+                                        enter = androidx.compose.animation.fadeIn(tween(Motion.SHORT_MS, easing = Motion.Ease)),
+                                        exit = androidx.compose.animation.fadeOut(tween(Motion.MEDIUM_MS, easing = Motion.Ease))
+                                    ) {
+                                        Column {
+                                            Spacer(Modifier.height(if (fullscreen) 16.dp else 8.dp))
+                                            NowPlayingTransportAndVolume(
+                                                viewModel = viewModel,
+                                                player = player,
+                                                playPauseFocus = playPauseFocus
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            NowPlayingArtwork(
+                                coverArt = track.coverArt,
+                                hasArt = hasArt,
+                                artScale = artScale,
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                                    .fillMaxWidth(0.7f)
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            NowPlayingTrackText(track = track, fullscreen = fullscreen, centered = true)
+                            if (player != null) {
+                                Spacer(Modifier.height(16.dp))
+                                NowPlayingProgress(player)
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = controlsVisible,
+                                    enter = androidx.compose.animation.fadeIn(tween(Motion.SHORT_MS, easing = Motion.Ease)),
+                                    exit = androidx.compose.animation.fadeOut(tween(Motion.MEDIUM_MS, easing = Motion.Ease))
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Spacer(Modifier.height(8.dp))
+                                        NowPlayingTransportAndVolume(
+                                            viewModel = viewModel,
+                                            player = player,
+                                            playPauseFocus = playPauseFocus
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (onFullscreen != null) {
+                        IconButton(
+                            onClick = onFullscreen,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).dpadFocus()
+                        ) {
+                            Icon(
+                                Icons.Default.Fullscreen,
+                                contentDescription = stringResource(R.string.cd_fullscreen),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                    if (onExitFullscreen != null) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = controlsVisible,
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            IconButton(
+                                onClick = onExitFullscreen,
+                                modifier = Modifier.padding(8.dp).dpadFocus()
+                            ) {
+                                Icon(
+                                    Icons.Default.FullscreenExit,
+                                    contentDescription = stringResource(R.string.cd_exit_fullscreen),
+                                    tint = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        CommandFeedback(feedbackIcon, feedbackTick)
+    }
+}
+
+@Composable
+private fun NowPlayingArtwork(
+    coverArt: android.graphics.Bitmap?,
+    hasArt: Boolean,
+    artScale: Float,
+    modifier: Modifier = Modifier,
+) {
+    val artShape = RoundedCornerShape(16.dp)
+    Box(
+        modifier = modifier
+            .graphicsLayer { scaleX = artScale; scaleY = artScale }
+            .shadow(if (hasArt) 24.dp else 0.dp, artShape)
+            .clip(artShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center
+    ) {
+        Crossfade(
+            targetState = coverArt,
+            animationSpec = tween(Motion.LONG_MS, easing = Motion.Ease),
+            label = "coverArt"
+        ) { art ->
+            if (art != null) {
+                Image(
+                    bitmap = art.asImageBitmap(),
+                    contentDescription = stringResource(R.string.cd_cover_art),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingTrackText(track: TrackInfo, fullscreen: Boolean, centered: Boolean) {
+    Crossfade(
+        targetState = Triple(track.title, track.artist, track.album),
+        animationSpec = tween(Motion.MEDIUM_MS, easing = Motion.Ease),
+        label = "trackText"
+    ) { (title, artist, album) ->
+        Column(
+            horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start
+        ) {
+            Text(
+                text = title.ifEmpty { stringResource(R.string.unknown_track) },
+                style = if (fullscreen) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = if (fullscreen) 2 else 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (artist.isNotEmpty()) {
+                Text(
+                    text = artist,
+                    style = if (fullscreen) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (album.isNotEmpty()) {
+                Text(
+                    text = album,
+                    style = if (fullscreen) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -1061,163 +1358,77 @@ private fun NowPlayingContent(viewModel: MainViewModel) {
 
 @Composable
 @AndroidxOptIn(UnstableApi::class)
-private fun NowPlayingColumn(viewModel: MainViewModel, track: TrackInfo, hasArt: Boolean) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        val player = viewModel.dacpPlayer
-        // artwork recedes while paused, like the Music app
-        val playing = player?.let { !rememberPlayPauseButtonState(it).showPlay } ?: true
-        val artScale by animateFloatAsState(
-            targetValue = if (playing) 1f else 0.86f,
-            animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
-            label = "artScale"
-        )
-        val artShape = RoundedCornerShape(16.dp)
-        Box(
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .aspectRatio(1f)
-                .fillMaxWidth(0.7f)
-                .graphicsLayer { scaleX = artScale; scaleY = artScale }
-                .shadow(if (hasArt) 24.dp else 0.dp, artShape)
-                .clip(artShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            contentAlignment = Alignment.Center
-        ) {
-            Crossfade(
-                targetState = track.coverArt,
-                animationSpec = tween(Motion.LONG_MS, easing = Motion.Ease),
-                label = "coverArt"
-            ) { art ->
-                if (art != null) {
-                    Image(
-                        bitmap = art.asImageBitmap(),
-                        contentDescription = stringResource(R.string.cd_cover_art),
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.MusicNote,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        // track info
-        Crossfade(
-            targetState = Triple(track.title, track.artist, track.album),
-            animationSpec = tween(Motion.MEDIUM_MS, easing = Motion.Ease),
-            label = "trackText"
-        ) { (title, artist, album) ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = title.ifEmpty { stringResource(R.string.unknown_track) },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (artist.isNotEmpty()) {
-                    Text(
-                        text = artist,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (album.isNotEmpty()) {
-                    Text(
-                        text = album,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        if (player != null) {
-            // BottomControls' default row, minus its video-overlay gradient
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                PositionText(player, Modifier.padding(end = 8.dp))
-                Box(modifier = Modifier.weight(1f)) { ProgressSlider(player) }
-                DurationText(player, Modifier.padding(start = 8.dp))
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                HoldScanButton(
-                    icon = Icons.Default.FastRewind,
-                    contentDescription = stringResource(R.string.cd_rewind),
-                    onBegin = { viewModel.audioScanBegin(false) },
-                    onEnd = { viewModel.audioScanEnd() }
-                )
-                PreviousButton(player, modifier = Modifier.dpadFocus())
-                PlayPauseButton(
-                    player,
-                    modifier = Modifier.size(63.dp).dpadFocus(CircleShape),
-                    iconSize = 40.dp
-                )
-                NextButton(player, modifier = Modifier.dpadFocus())
-                HoldScanButton(
-                    icon = Icons.Default.FastForward,
-                    contentDescription = stringResource(R.string.cd_fast_forward),
-                    onBegin = { viewModel.audioScanBegin(true) },
-                    onEnd = { viewModel.audioScanEnd() }
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            val context = LocalContext.current
-            val serverVolume = remember { ServerVolumeState(context) }
-            DisposableEffect(serverVolume) { serverVolume.handleLifecycle(this) }
-            VolumeSlider(
-                icon = painterResource(R.drawable.ic_download),
-                label = stringResource(R.string.volume_server),
-                value = serverVolume.percentage / 100f,
-                onValueChange = { serverVolume.update((it * 100).roundToInt()) },
-                onStep = { serverVolume.adjust(it > 0) }
-            )
-
-            val clientVolume by viewModel.clientVolume.collectAsState()
-            val clientAdjustable by viewModel.clientVolumeAdjustable.collectAsState()
-            // sender reports back only after each dacp step
-            var clientDrag by remember { mutableStateOf<Float?>(null) }
-            val clientShown = clientDrag ?: clientVolume
-            VolumeSlider(
-                icon = painterResource(R.drawable.ic_upload),
-                label = stringResource(R.string.volume_client),
-                value = clientShown,
-                enabled = clientAdjustable,
-                onValueChange = { clientDrag = it; viewModel.setClientVolume(it) },
-                onValueChangeFinished = { clientDrag = null },
-                onStep = { viewModel.setClientVolume((clientShown + it * CLIENT_VOLUME_STEP).coerceIn(0f, 1f)) }
-            )
-        }
+private fun NowPlayingProgress(player: androidx.media3.common.Player) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        PositionText(player, Modifier.padding(end = 8.dp))
+        Box(modifier = Modifier.weight(1f)) { ProgressSlider(player) }
+        DurationText(player, Modifier.padding(start = 8.dp))
     }
+}
+
+@Composable
+@AndroidxOptIn(UnstableApi::class)
+private fun NowPlayingTransportAndVolume(
+    viewModel: MainViewModel,
+    player: androidx.media3.common.Player,
+    playPauseFocus: FocusRequester,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        HoldScanButton(
+            icon = Icons.Default.FastRewind,
+            contentDescription = stringResource(R.string.cd_rewind),
+            onBegin = { viewModel.audioScanBegin(false) },
+            onEnd = { viewModel.audioScanEnd() }
+        )
+        PreviousButton(player, modifier = Modifier.dpadFocus())
+        PlayPauseButton(
+            player,
+            modifier = Modifier
+                .size(63.dp)
+                .focusRequester(playPauseFocus)
+                .dpadFocus(CircleShape),
+            iconSize = 40.dp
+        )
+        NextButton(player, modifier = Modifier.dpadFocus())
+        HoldScanButton(
+            icon = Icons.Default.FastForward,
+            contentDescription = stringResource(R.string.cd_fast_forward),
+            onBegin = { viewModel.audioScanBegin(true) },
+            onEnd = { viewModel.audioScanEnd() }
+        )
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    val context = LocalContext.current
+    val serverVolume = remember { ServerVolumeState(context) }
+    DisposableEffect(serverVolume) { serverVolume.handleLifecycle(this) }
+    VolumeSlider(
+        icon = painterResource(R.drawable.ic_download),
+        label = stringResource(R.string.volume_server),
+        value = serverVolume.percentage / 100f,
+        onValueChange = { serverVolume.update((it * 100).roundToInt()) },
+        onStep = { serverVolume.adjust(it > 0) }
+    )
+
+    val clientVolume by viewModel.clientVolume.collectAsState()
+    val clientAdjustable by viewModel.clientVolumeAdjustable.collectAsState()
+    // sender reports back only after each dacp step
+    var clientDrag by remember { mutableStateOf<Float?>(null) }
+    val clientShown = clientDrag ?: clientVolume
+    VolumeSlider(
+        icon = painterResource(R.drawable.ic_upload),
+        label = stringResource(R.string.volume_client),
+        value = clientShown,
+        enabled = clientAdjustable,
+        onValueChange = { clientDrag = it; viewModel.setClientVolume(it) },
+        onValueChangeFinished = { clientDrag = null },
+        onStep = { viewModel.setClientVolume((clientShown + it * CLIENT_VOLUME_STEP).coerceIn(0f, 1f)) }
+    )
 }
 
 @Composable
@@ -1231,26 +1442,35 @@ private fun VolumeSlider(
     onValueChangeFinished: (() -> Unit)? = null
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Slider(
-                value = value,
-                onValueChange = onValueChange,
-                enabled = enabled,
-                onValueChangeFinished = onValueChangeFinished,
-                modifier = Modifier
-                    .semantics { contentDescription = label }
-                    .dpadFocus()
-                    .dpadAdjust(onLeft = { onStep(-1) }, onRight = { onStep(1) })
-            )
-        }
-        Spacer(Modifier.width(12.dp))
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(min = 96.dp, max = 136.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            onValueChangeFinished = onValueChangeFinished,
+            modifier = Modifier
+                .weight(1f)
+                .height(32.dp)
+                .semantics { contentDescription = label }
+                .dpadFocus()
+                .dpadAdjust(onLeft = { onStep(-1) }, onRight = { onStep(1) })
+        )
+        Spacer(Modifier.width(8.dp))
         Text(
             text = stringResource(R.string.volume_value, (value * 100).roundToInt()),
             style = MaterialTheme.typography.labelLarge,
@@ -1259,6 +1479,8 @@ private fun VolumeSlider(
         )
     }
 }
+
+private const val AUDIO_CONTROLS_HIDE_MS = 5000L
 
 // sender has 16 volume steps above mute
 private const val CLIENT_VOLUME_STEP = 1f / 16
