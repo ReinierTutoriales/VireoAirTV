@@ -2,7 +2,7 @@
     [string]$Target,
     [string]$ApkPath,
     [string]$ServerName,
-    [string]$PackageName = "io.github.jqssun.airplay"
+    [string]$PackageName = "com.reiniertutoriales.vireoairtv"
 )
 
 $ErrorActionPreference = "Stop"

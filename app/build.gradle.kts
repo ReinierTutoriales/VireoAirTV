@@ -36,11 +36,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.github.jqssun.airplay"
+        applicationId = "com.reiniertutoriales.vireoairtv"
         minSdk = 24
         targetSdk = 37
-        versionCode = 36
-        versionName = "0.0.36"
+        versionCode = 1
+        versionName = "0.0.1"
 
         externalNativeBuild {
             cmake {

@@ -6,9 +6,15 @@ Receptor AirPlay para Android TV, independiente de VireoLumaTV. Fork de [jqssun/
 - Auditoría y plan: [docs/AUDITORIA.md](docs/AUDITORIA.md)
 - Sincronización con upstream: [docs/UPSTREAM.md](docs/UPSTREAM.md)
 
+## Instalación
+Descarga `app-release.apk` de la última versión en [Releases](https://github.com/ReinierTutoriales/VireoAirTV/releases) e instálala como cualquier APK. Identificador: `com.reiniertutoriales.vireoairtv`.
+
+Para que la app se abra sola al conectar hace falta el permiso "Mostrar sobre otras apps" (Ajustes → Apps → Acceso especial). Si tu televisor no lo muestra, concédelo una vez por ADB con `scripts/provision.ps1` o `scripts/provision.sh`.
+
+## Compilar
 ```bash
 git clone --recursive https://github.com/ReinierTutoriales/VireoAirTV
-cd VireoAirTV && ./gradlew assembleDebug
+cd VireoAirTV && ./gradlew assembleDebug testDebugUnitTest lintDebug
 ```
 
 ---

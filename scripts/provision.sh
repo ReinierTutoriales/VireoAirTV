@@ -4,7 +4,7 @@ set -euo pipefail
 TARGET="${1:-}"
 APK_PATH="${2:-}"
 SERVER_NAME="${3:-}"
-PACKAGE_NAME="${PACKAGE_NAME:-io.github.jqssun.airplay}"
+PACKAGE_NAME="${PACKAGE_NAME:-com.reiniertutoriales.vireoairtv}"
 
 ADB_ARGS=()
 if [[ -n "$TARGET" ]]; then
