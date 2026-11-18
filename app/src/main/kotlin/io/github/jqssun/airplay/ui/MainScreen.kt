@@ -135,7 +135,7 @@ fun MainScreen(
                 bufferSize = mirrorSize,
                 frameRate = if (mirrorSize != null) maxFps.toFloat() else 0f
             )
-            FadeFromBlack(active = mirrorSize != null, modifier = Modifier.matchParentSize())
+            FadeFromBlack(active = mirrorSize != null, modifier = Modifier.matchParentSize(), key = mirrorSize)
         }
     }
 

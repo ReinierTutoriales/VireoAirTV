@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
@@ -35,16 +38,22 @@ object Motion {
 
 /**
  * Black layer over a video surface: when [active] turns true (stream starts, or the surface is
- * shown again) the picture fades in from black. Transparent otherwise, so idle content stays visible.
+ * shown again) the picture fades in from black. A change of [key] while active (the sender rotated,
+ * so the stream size changed) dips briefly through black instead of jumping to the new layout.
+ * Transparent otherwise, so idle content stays visible.
  */
 @Composable
-fun FadeFromBlack(active: Boolean, modifier: Modifier = Modifier) {
+fun FadeFromBlack(active: Boolean, modifier: Modifier = Modifier, key: Any? = null) {
     val alpha = remember { Animatable(if (active) 1f else 0f) }
-    LaunchedEffect(active) {
+    var wasActive by remember { mutableStateOf(false) }
+    LaunchedEffect(active, key) {
         if (active) {
+            val ms = if (wasActive) Motion.SHORT_MS else Motion.MEDIUM_MS
+            wasActive = true
             alpha.snapTo(1f)
-            alpha.animateTo(0f, tween(Motion.MEDIUM_MS, easing = Motion.Ease))
+            alpha.animateTo(0f, tween(ms, easing = Motion.Ease))
         } else {
+            wasActive = false
             alpha.snapTo(0f)
         }
     }
