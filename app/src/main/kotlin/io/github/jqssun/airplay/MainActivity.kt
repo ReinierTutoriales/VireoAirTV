@@ -246,6 +246,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        // back in the background (Back, Home, auto return): reopening from recents shows the app, not a
+        // black receiver screen that would send itself away again
+        if (!isInPip.value) {
+            autoLaunched.value = false
+            sawVisual = false
+        }
         // never stop mid-session
         if (!viewModel.pref(Prefs.RUN_IN_BACKGROUND).value && !isChangingConfigurations &&
             viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
