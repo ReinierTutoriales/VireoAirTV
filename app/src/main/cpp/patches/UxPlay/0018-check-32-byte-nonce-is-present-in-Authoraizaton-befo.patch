@@ -1,0 +1,32 @@
+From 0969f4c149da40077b5ae5398b7b7f221cccb0c5 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Mon, 26 Oct 2026 12:28:46 -0400
+Subject: [PATCH 18/29] check 32 byte nonce is present in Authoraizaton before
+ copying
+
+(cherry picked from commit ab596330b8a9aa42c474186206fcd7f7db0dc9df)
+---
+ lib/raop_handlers.h | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/lib/raop_handlers.h b/lib/raop_handlers.h
+index dfaae1a..e5dd4fe 100644
+--- a/lib/raop_handlers.h
++++ b/lib/raop_handlers.h
+@@ -694,8 +694,14 @@ raop_handler_setup(raop_conn_t *conn,
+                 char nonce_string[33] = { '\0' };
+                 //bool stale = false;  //not implemented
+                 if (len && authorization) {
+-                    const char *ptr = strstr(authorization, "nonce=\"") +  strlen("nonce=\"");
+-                    strncpy(nonce_string, ptr, 32);
++                    const char *nonce = strstr(authorization, "nonce=\"");
++                    nonce = nonce ? nonce + strlen("nonce=\"") : NULL;
++                    if (nonce) {
++                        const char *end = strchr(nonce, '\"');
++                        if (end && end == nonce + 32) {
++                            strncpy(nonce_string, nonce, 32);
++                        }
++                    }
+                     const char *method = http_request_get_method(request);
+                     conn->authenticated = pairing_digest_verify(method, authorization, password);
+ 		    if (!conn->authenticated) {
