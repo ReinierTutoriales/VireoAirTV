@@ -1,8 +1,8 @@
 package io.github.jqssun.airplay.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,6 +26,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -39,6 +45,9 @@ import io.github.jqssun.airplay.R
 /**
  * The AirPlay code, full screen on black as Apple TV shows it: one tile per digit, large enough to read
  * from the sofa, and a line saying where to type it. OK or Back dismisses it.
+ *
+ * The remote is held by [pinKeys] at the root of [MainScreen], not here: the screens below stay
+ * composed and may keep focus, and a key handler on this node only sees keys when it is focused.
  */
 @Composable
 fun AirPlayPinScreen(code: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
@@ -48,8 +57,9 @@ fun AirPlayPinScreen(code: String, onDismiss: () -> Unit, modifier: Modifier = M
         modifier
             .fillMaxSize()
             .background(Color.Black)
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } }
             .focusRequester(focus)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            .focusable(),
         contentAlignment = Alignment.Center,
     ) {
         val scale = minOf(maxWidth / 960.dp, maxHeight / 540.dp).coerceIn(0.6f, 2.2f)
@@ -84,4 +94,17 @@ fun AirPlayPinScreen(code: String, onDismiss: () -> Unit, modifier: Modifier = M
             )
         }
     }
+}
+
+/**
+ * Key policy while the code is shown, applied before any focused node sees the key: OK dismisses on
+ * release, arrows and Tab go nowhere, everything else (Back, media keys) passes through.
+ */
+internal fun pinKeys(e: KeyEvent, onDismiss: () -> Unit): Boolean = when (e.key) {
+    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+        if (e.type == KeyEventType.KeyUp) onDismiss()
+        true
+    }
+    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight, Key.Tab -> true
+    else -> false
 }

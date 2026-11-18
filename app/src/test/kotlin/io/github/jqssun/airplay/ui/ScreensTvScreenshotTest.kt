@@ -15,6 +15,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.test.core.app.ApplicationProvider
 import io.github.jqssun.airplay.audio.TrackInfo
 import io.github.jqssun.airplay.viewmodel.MainViewModel
@@ -101,6 +104,29 @@ class ScreensTvScreenshotTest {
     @Test fun pinOverPicture() {
         set("_serverState", ServerState.RUNNING); set("_connectionCount", 1); set("_pinCode", "4821")
         render(receiverOnly = true); save("tv_pin_receiver_only")
+    }
+
+    // an AirPlay video (HLS) screen returned early and never drew the PIN
+    @Test fun pinOverVideo() {
+        set("_serverState", ServerState.RUNNING); set("_connectionCount", 2)
+        set("_videoSessionPending", true); set("_pinCode", "7305")
+        render(); save("tv_pin_over_video")
+        compose.onNodeWithText("7").assertExists()
+    }
+
+    // the screens below the PIN stay composed: arrows must not reach Stop, and OK dismisses the PIN
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+    @Test fun pinHoldsTheRemote() {
+        set("_serverState", ServerState.RUNNING); set("_connectionCount", 1); set("_pinCode", "4821")
+        render()
+        compose.onRoot().performKeyInput {
+            pressKey(androidx.compose.ui.input.key.Key.DirectionDown)
+            pressKey(androidx.compose.ui.input.key.Key.DirectionRight)
+            pressKey(androidx.compose.ui.input.key.Key.DirectionCenter)
+        }
+        compose.waitForIdle()
+        org.junit.Assert.assertNull("OK dismisses the PIN", vm.pinCode.value)
+        org.junit.Assert.assertEquals("the server keeps running", ServerState.RUNNING, vm.serverState.value)
     }
 
     @Test fun receiverWaiting() {

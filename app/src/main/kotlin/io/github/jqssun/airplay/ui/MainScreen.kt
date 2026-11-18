@@ -120,6 +120,28 @@ fun MainScreen(
     onSurfaceDestroyed: (android.view.Surface) -> Unit,
     onPip: () -> Unit = {},
     onLocalNetwork: () -> Unit = {},
+    receiverOnly: Boolean = false,
+    onLeaveReceiverOnly: () -> Unit = {}
+) {
+    val pin by viewModel.pinCode.collectAsState()
+    // the AirPlay code holds the remote from the root: preview events reach this node before whatever
+    // keeps focus in the screens below, so OK cannot press their buttons and arrows cannot move to them
+    Box(
+        Modifier.fillMaxSize().onPreviewKeyEvent { e -> pin != null && pinKeys(e) { viewModel.dismissPin() } },
+        propagateMinConstraints = true,
+    ) {
+        MainScreenContent(viewModel, isInPip, onSurfaceAvailable, onSurfaceDestroyed, onPip, onLocalNetwork, receiverOnly, onLeaveReceiverOnly)
+    }
+}
+
+@Composable
+private fun MainScreenContent(
+    viewModel: MainViewModel,
+    isInPip: Boolean = false,
+    onSurfaceAvailable: (android.view.Surface) -> Unit,
+    onSurfaceDestroyed: (android.view.Surface) -> Unit,
+    onPip: () -> Unit = {},
+    onLocalNetwork: () -> Unit = {},
     // brought up for a session (Apple TV style): only the sender's picture, never the app screens
     receiverOnly: Boolean = false,
     // Back during such a session: return to the previous app; the session keeps running
@@ -179,14 +201,23 @@ fun MainScreen(
 
     val activity = LocalActivity.current
     val videoScreen = videoPlaybackActive || videoSessionPending
-    LaunchedEffect(fullscreen, videoScreen) {
+    LaunchedEffect(fullscreen, videoScreen, receiverOnly, pin != null) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        if (fullscreen || videoScreen || receiverOnly) {
+        if (fullscreen || videoScreen || receiverOnly || pin != null) {
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
             controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    // full screen, as Apple TV shows its AirPlay code; drawn over whatever is below (an HLS video keeps
+    // playing), so it holds the remote: OK or Back dismisses it, arrows go nowhere
+    val pinOverlay: @Composable () -> Unit = {
+        pin?.let { code ->
+            BackHandler { viewModel.dismissPin() }
+            AirPlayPinScreen(code, onDismiss = { viewModel.dismissPin() })
         }
     }
 
@@ -555,6 +586,7 @@ fun MainScreen(
                 onDismiss = { showTrackSelector = false }
             )
         }
+        pinOverlay()
         return
     }
 
@@ -642,11 +674,7 @@ fun MainScreen(
         }
     }
 
-    // full screen, as Apple TV shows its AirPlay code; Back or OK dismisses it
-    pin?.let { code ->
-        BackHandler { viewModel.dismissPin() }
-        AirPlayPinScreen(code, onDismiss = { viewModel.dismissPin() })
-    }
+    pinOverlay()
 
 }
 
