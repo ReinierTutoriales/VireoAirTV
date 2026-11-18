@@ -131,6 +131,18 @@ DLNA.
 - `fairplay_setup_mode.c` en `native-regress.sh` cubre los tres parches. Envío desde Música de macOS:
   pendiente de validación física.
 
+## Sexta pasada: mejoras propias (2026-11-18, rama `develop`)
+- Parche 0045 (ya descrito arriba) no lo había reportado nadie: upstream solo lo cerró dentro del merge de FairPlay v2.
+- Parche 0047: dos comportamientos indefinidos en playfair (un desplazamiento hasta el bit 31 de un
+  `int` y un producto `int` que se desborda). Con `uint32_t` las claves no cambian: 200000 mensajes
+  aleatorios en los cuatro modos dan las mismas claves con gcc y clang -O2. El test guarda una suma
+  de control de 2000 claves, y UBSan vuelve a estar completo en `native-regress.sh`.
+- `VideoRenderer`: la salida del decodificador solo se vaciaba al llegar el siguiente frame, con
+  espera 0. Cada frame se mostraba como pronto un intervalo de frame tarde, y el último de una ráfaga
+  esperaba al siguiente envío. Ahora un hilo `VideoDrain` con prioridad de pantalla lo saca en cuanto
+  está decodificado. Latencia en TV: pendiente de validación física (medir con `benchmarkLog`).
+- Descartado: los `printf` de playfair ya están anulados con `#define printf(...)`; no cuestan nada.
+
 ## Verificado
 `assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
 `scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.

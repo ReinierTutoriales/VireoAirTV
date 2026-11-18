@@ -29,5 +29,12 @@ Never move a pin wholesale to a moving branch. Port individual fixes onto our ba
 - The receiver is reachable from the whole LAN before pairing: bound allocations driven by input size, and never hand network bytes to `NewStringUTF` unchecked.
 - Downloads at build time must be pinned by hash.
 
+## Improve, don't only copy
+A port is the floor. Before closing a pass, look at our own code with the same tools that found the upstream bugs:
+- Read every upstream diff for the bug class it fixes and look for the same class elsewhere: the FairPlay v2 merge fixed `req[14]`; the same unchecked mode byte was also in the handshake (`req[12]`, patch 0045), unreported upstream.
+- Run the native code under ASan/UBSan with random input and fix what it reports. A refactor of crypto or codec code needs a differential test: identical output before and after on many random inputs, and a known-answer value kept in the test (patch 0047).
+- Trace the hot path end to end (network -> decoder -> display) and question each wait: decoder output drained only when the next input arrived added one frame of latency (`VideoRenderer` drain thread).
+- Do not report a performance problem without proof: the playfair `printf` calls looked costly but compile to nothing (`#define printf(...)`).
+
 ## Verification before commit
 `./gradlew assembleDebug testDebugUnitTest lintDebug` (3 ABIs), `assembleSanitize`, `scripts/native-regress.sh`. Device behavior stays "pendiente de validación física". Record ported, rejected and pending items in `docs/AUDITORIA-REFERENCIAS.md`.
