@@ -125,6 +125,8 @@ class VideoPipeline {
             return
         }
         egl.makeCurrent(window)
+        // live video: queue the newest frame without blocking on vsync; the compositor shows the latest
+        egl.swapInterval(0)
         winW = egl.query(window, EGL14.EGL_WIDTH)
         winH = egl.query(window, EGL14.EGL_HEIGHT)
         // an idle source sends no new frames, so repaint last one or new surface stays black

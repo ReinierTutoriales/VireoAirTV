@@ -44,6 +44,9 @@ class EglCore : AutoCloseable {
 
     fun swap(surface: EGLSurface) = EGL14.eglSwapBuffers(display, surface)
 
+    // applies to the surface current on this thread
+    fun swapInterval(interval: Int) = EGL14.eglSwapInterval(display, interval)
+
     fun query(surface: EGLSurface, what: Int): Int {
         val v = IntArray(1)
         EGL14.eglQuerySurface(display, surface, what, v, 0)
