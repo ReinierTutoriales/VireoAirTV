@@ -1,5 +1,6 @@
 /* UxPlay patches 0044 and 0045: the FairPlay key mode from the network must not index past
- * reply_message[4] (setup) or message_key[4] (handshake, used by playfair_decrypt). */
+ * reply_message[4] (setup) or message_key[4] (handshake, used by playfair_decrypt).
+ * Patch 0046 (FairPlay v2): v2 records are validated and v3 keeps working after a v2 setup. */
 #include <stdio.h>
 #include <string.h>
 #include "fairplay.h"
@@ -27,6 +28,23 @@ int main(void) {
     msg[12] = 200;
     if (fairplay_handshake(fp, msg, hres) == 0) { fputs("FAIL: handshake mode 200 accepted\n", stderr); return 1; }
     if (fairplay_decrypt(fp, ekey, key) == 0) { fputs("FAIL: decrypt used a rejected key message\n", stderr); return 1; }
+
+    /* FairPlay v2 (selector 2, macOS Music) */
+    unsigned char v2[16] = {0x46, 0x50, 0x4c, 0x59, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0x04, 0x02, 0x00, 1, 0xbb};
+    memset(res, 0, sizeof(res));
+    if (fairplay_setup(fp, v2, res) != 0) { fputs("FAIL: v2 setup rejected\n", stderr); return 1; }
+    if (memcmp(res, "FPLY\x02\x01\x02\x00\x00\x00\x00\x82\x02\x01", 14) != 0) { fputs("FAIL: v2 reply header\n", stderr); return 1; }
+    /* the v2 handshake must carry the sender's confirmation; zeros are refused */
+    unsigned char v2hs[164] = {0x46, 0x50, 0x4c, 0x59, 0x02, 0x01, 0x03, 0x00, 0, 0, 0, 0x98, 1, 0x8f, 0x1a, 0x9c};
+    if (fairplay_handshake(fp, v2hs, hres) == 0) { fputs("FAIL: forged v2 handshake accepted\n", stderr); return 1; }
+    if (fairplay_decrypt(fp, ekey, key) == 0) { fputs("FAIL: decrypt after a failed v2 handshake\n", stderr); return 1; }
+    v2[14] = 4;
+    if (fairplay_setup(fp, v2, res) == 0) { fputs("FAIL: v2 mode 4 accepted\n", stderr); return 1; }
+    v2[14] = 1; v2[15] = 0;
+    if (fairplay_setup(fp, v2, res) == 0) { fputs("FAIL: v2 bad trailer accepted\n", stderr); return 1; }
+    /* an iPhone (v3) after a Mac (v2) on the same connection */
+    msg[12] = 3;
+    if (fairplay_handshake(fp, msg, hres) != 0 || fairplay_decrypt(fp, ekey, key) != 0) { fputs("FAIL: v3 after v2\n", stderr); return 1; }
 
     fairplay_destroy(fp);
     puts("fairplay_setup_mode: ok");
