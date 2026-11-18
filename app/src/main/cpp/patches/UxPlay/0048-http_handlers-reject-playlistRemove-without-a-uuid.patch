@@ -1,0 +1,30 @@
+From 79f2bd105d158c801a46b2b59352924d172461be Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:57:10 -0500
+Subject: [PATCH 48/52] http_handlers: reject playlistRemove without a uuid
+
+The uuid of POST /action playlistRemove comes from the client and was only checked with assert(), which release builds compile out; a NULL uuid then reached strcmp() in get_playlist_by_uuid().
+---
+ lib/http_handlers.h | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index 1c6db1a..1bef565 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -557,8 +557,13 @@ http_handler_action(raop_conn_t *conn, http_request_t *request, http_response_t
+         }
+         plist_t req_params_item_uuid_node = plist_dict_get_item(req_params_item_node, "uuid");
+         char* remove_uuid = NULL;
+-        plist_get_string_val(req_params_item_uuid_node, &remove_uuid);
+-        assert(remove_uuid);
++        if (PLIST_IS_STRING(req_params_item_uuid_node)) {
++            plist_get_string_val(req_params_item_uuid_node, &remove_uuid);
++        }
++        /* from the network: a missing uuid would reach strcmp() as NULL (assert() is compiled out) */
++        if (!remove_uuid) {
++            goto post_action_error;
++        }
+         int id  =  get_playlist_by_uuid(raop, remove_uuid);
+         if (id == raop->current_video) {
+             raop->current_video = -1;

@@ -1,0 +1,48 @@
+From 643b64cdd340ca26fdd2e09f4241d2bb8aa6bb64 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:57:11 -0500
+Subject: [PATCH 49/52] http_handlers: free a stored playlist when all slots
+ are full
+
+Playlists of 90 s or more are kept for resume, up to MAX_AIRPLAY_VIDEO (10). The 11th long video in one session tripped assert(count < MAX_AIRPLAY_VIDEO); without asserts id stayed -1 and airplay_video[-1] was written. Now a stored playlist that is not the current one is freed, and a failed slot search ends the request with an error.
+---
+ lib/http_handlers.h | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index 1bef565..d65b206 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -926,8 +926,19 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
+         }
+     }
+ 
+-    assert (count < MAX_AIRPLAY_VIDEO);
+-    assert(id == -1);
++    /* every slot holds a long playlist (kept for resume): one more /play left id at -1 and wrote
++       airplay_video[-1]. Free a slot that is not the current video. */
++    if (count >= MAX_AIRPLAY_VIDEO) {
++        for (int i = 0; i < MAX_AIRPLAY_VIDEO; i++) {
++            if (raop->airplay_video[i] && i != raop->current_video) {
++                logger_log(raop->logger, LOGGER_INFO, "playlist store full: deleting playlist playback_uuid %s",
++                           get_playback_uuid(raop->airplay_video[i]));
++                raop_destroy_airplay_video(raop, i);
++                break;
++            }
++        }
++    }
++    id = -1;
+     /* initialize new airplay_video structure to hold playlist */
+     for (int i = 0; i < MAX_AIRPLAY_VIDEO; i++) {
+         if (raop->airplay_video[i]) {
+@@ -936,7 +947,9 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
+         id = i;
+         break;
+     }
+-    assert(id >= 0);
++    if (id < 0) {
++        goto play_error;
++    }
+ 
+     raop->current_video = id;
+     raop->airplay_video[id] = airplay_video_init(raop, raop->port, raop->lang);

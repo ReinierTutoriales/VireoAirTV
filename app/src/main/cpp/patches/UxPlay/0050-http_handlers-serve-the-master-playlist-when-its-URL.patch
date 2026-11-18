@@ -1,0 +1,25 @@
+From f4b7f26f84397dff65dcb1f01cd7e9c7fdff358e Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:57:11 -0500
+Subject: [PATCH 50/52] http_handlers: serve the master playlist when its URL
+ has a query
+
+/play keeps the suffix of Content-Location from /master.m3u8 on, query included, but the HLS handler matched the master with strcmp(url, "/master.m3u8"), so /master.m3u8?t=... fell into the media-playlist branch and failed (jqssun/android-airplay-server#79).
+---
+ lib/http_handlers.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index d65b206..dd1f7f0 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -1078,7 +1078,8 @@ http_handler_hls(raop_conn_t *conn,  http_request_t *request, http_response_t *r
+         http_response_init(response, "HTTP/1.1", 404, "Not Found");
+         return;
+     }
+-    if (!strcmp(url, "/master.m3u8")){
++    /* the local location keeps the sender's query string ("/master.m3u8?t=..."): match the path only */
++    if (!strncmp(url, "/master.m3u8", 12) && (url[12] == '\0' || url[12] == '?')) {
+         char * master_playlist  = get_master_playlist(airplay_video);
+         if (master_playlist) {
+             *response_data = master_playlist;

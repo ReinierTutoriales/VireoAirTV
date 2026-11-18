@@ -1,0 +1,24 @@
+From 7dc8ac0f10928e500027533e8a136f95ba7563a4 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 12:57:11 -0500
+Subject: [PATCH 52/52] http_handlers: check the right pointer after calloc in
+ /play
+
+The allocation of uri_prefix was followed by a NULL check of playback_location.
+---
+ lib/http_handlers.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index dd1f7f0..2407f2c 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -998,7 +998,7 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
+         set_playback_location(airplay_video, location, strlen(location));
+         free(location);
+         char *uri_prefix = (char *) calloc(strlen(playback_location) + 1, sizeof(char));
+-        if (!playback_location) {
++        if (!uri_prefix) {
+             printf("Memeory allocation failed (playback_location)\n");
+             exit(1);
+         }
