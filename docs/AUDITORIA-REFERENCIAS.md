@@ -180,6 +180,20 @@ Pendiente, con motivo:
 - jqssun #73 (TikTok), #44 (`ANNOUNCE` de PipeWire), #42 (Music Assistant/TuneBlade), #61 (perfil de
   color), #90 (confirmar conexiones), #93 (límite de 8 Mbit/s de macOS, ajuste del emisor), #26, #65, #83.
 
+## Novena pasada: fuzzing y PIN persistente (2026-11-18, rama `develop`)
+Método: libFuzzer con ASan/UBSan (documentación de LLVM) sobre todo el código nativo que lee datos del
+emisor, y revisión manual de lo que el fuzzing no alcanza (el parser del vídeo de mirroring, dentro del
+bucle de red). `scripts/fuzz.sh` reproduce la campaña.
+- Parche 0060: `create_media_uri_table()` leía después del final de un master que termina en `m3u8`.
+- Parche 0061: `adjust_yt_condensed_playlist()` escribía fuera de su buffer con playlists de YouTube que
+  no cuadraban con su cabecera. La salida crece al escribir; las válidas dan los mismos bytes que antes.
+- Parche 0062 (revisión manual): el parser del mirroring usaba sin comprobar el tamaño del payload, los
+  prefijos de longitud de las NAL y los tamaños VPS/SPS/PPS del paquete de códec.
+- Tras 0060 y 0061: unos 80 millones de entradas en 7 minutos por objetivo, sin fallos.
+- Revisados sin fallos: `DmapParser` (metadatos) y la decodificación de la carátula.
+- PIN: las claves de los emisores emparejados se guardan (`TrustedClients`, hasta 32) y se cargan al
+  arrancar; ajuste "Forget paired devices". La lista nativa queda protegida por un mutex.
+
 ## Octava pasada: revisión de errores (2026-11-18, rama `develop`)
 Revisión del diff `main..develop` y análisis estático (cppcheck 2.22) del código nativo.
 - Parche 0059, grave: el emparejamiento por PIN se podía saltar. El paso 3 de `pair-setup-pin` se aceptaba
