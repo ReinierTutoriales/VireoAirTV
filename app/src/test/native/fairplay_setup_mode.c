@@ -1,9 +1,14 @@
 /* UxPlay patches 0044 and 0045: the FairPlay key mode from the network must not index past
  * reply_message[4] (setup) or message_key[4] (handshake, used by playfair_decrypt).
- * Patch 0046 (FairPlay v2): v2 records are validated and v3 keeps working after a v2 setup. */
+ * Patch 0046 (FairPlay v2): v2 records are validated and v3 keeps working after a v2 setup.
+ * Patch 0047 (playfair without signed overflow): v3 key decryption gives the same keys as before. */
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include "fairplay.h"
+
+static uint32_t rng = 7;
+static unsigned char next_byte(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return (unsigned char) rng; }
 
 int main(void) {
     fairplay_t *fp = fairplay_init(NULL);
@@ -45,6 +50,17 @@ int main(void) {
     /* an iPhone (v3) after a Mac (v2) on the same connection */
     msg[12] = 3;
     if (fairplay_handshake(fp, msg, hres) != 0 || fairplay_decrypt(fp, ekey, key) != 0) { fputs("FAIL: v3 after v2\n", stderr); return 1; }
+
+    /* checksum of 2000 decrypted keys over all four modes, recorded with the code before patch 0047 */
+    uint64_t sum = 1469598103934665603ULL;
+    for (int t = 0; t < 2000; t++) {
+        for (int i = 0; i < 164; i++) msg[i] = next_byte();
+        for (int i = 0; i < 72; i++) ekey[i] = next_byte();
+        msg[4] = 3; msg[12] = t % 4;
+        if (fairplay_handshake(fp, msg, hres) != 0 || fairplay_decrypt(fp, ekey, key) != 0) { fputs("FAIL: v3 decrypt\n", stderr); return 1; }
+        for (int i = 0; i < 16; i++) sum = (sum ^ key[i]) * 1099511628211ULL;
+    }
+    if (sum != 0x36dad2d4bf5daea9ULL) { fprintf(stderr, "FAIL: v3 keys changed (%016llx)\n", (unsigned long long) sum); return 1; }
 
     fairplay_destroy(fp);
     puts("fairplay_setup_mode: ok");

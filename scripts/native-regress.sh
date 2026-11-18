@@ -15,9 +15,7 @@ flags=(-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all)
     "$ux/http_request.c" "$ux"/llhttp/*.c -o "$out/http_request_limits"
 "$out/http_request_limits"
 
-# playfair's own arithmetic shifts into the sign bit and overflows int by design; those two
-# checks are off for this test so it stops only on memory errors and the remaining UB checks.
-"$cc" "${flags[@]}" -fno-sanitize=shift-base,signed-integer-overflow -I"$ux" -I"$ux/playfair" app/src/test/native/fairplay_setup_mode.c \
+"$cc" "${flags[@]}" -I"$ux" -I"$ux/playfair" app/src/test/native/fairplay_setup_mode.c \
     "$ux/fairplay_playfair.c" "$ux/fairplay_v2/fairplay_v2.c" "$ux"/playfair/*.c "$ux/logger.c" \
     -lcrypto -lpthread -lm -o "$out/fairplay_setup_mode"
 "$out/fairplay_setup_mode"
