@@ -1,0 +1,42 @@
+From 6c814800d211c47633d2ae96206f1c15bf09d516 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Mon, 2 Nov 2026 19:27:27 -0500
+Subject: [PATCH 23/29] mirror_bufffer modification request by @PhilflowIO
+ fordoubletake client
+
+Use only as much leftover keystream as this frame is long.  A frame
+shorter than the leftover (e.g. a ~13-byte "nothing changed" frame
+from a sender that strips SEI) must keep the unused keystream suffix
+for the next frame: consuming all of it desynchronizes AES-CTR for
+the rest of the session and writes past the end of output.
+fixes #615
+
+(cherry picked from commit b1be2bd26629f822fa1f6ebbdb0c3a2ed30aa62f)
+---
+ lib/mirror_buffer.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/lib/mirror_buffer.c b/lib/mirror_buffer.c
+index 95492e8..8382662 100644
+--- a/lib/mirror_buffer.c
++++ b/lib/mirror_buffer.c
+@@ -94,8 +94,18 @@ mirror_buffer_init(logger_t *logger, const unsigned char *aeskey)
+ void mirror_buffer_decrypt(mirror_buffer_t *mirror_buffer, unsigned char* input, unsigned char* output, int inputLen) {
+     // Start decrypting
+     if (mirror_buffer->nextDecryptCount > 0) {//mirror_buffer->nextDecryptCount = 10
++        int n = mirror_buffer->nextDecryptCount;
++        int m = (n < inputLen ? n :inputLen);
+         for (int i = 0; i < mirror_buffer->nextDecryptCount; i++) {
+-            output[i] = (input[i] ^ mirror_buffer->og[(16 - mirror_buffer->nextDecryptCount) + i]);
++            output[i] = (input[i] ^ mirror_buffer->og[(16 - n) + i]);
++            // if less than one full frame has arrived, place data in buffer, and wait
++            // for rest to come without starting decryption.
++            // not usual with real Apple clients, but needed for
++            // some third-party clients. 
++            if (m < n) {
++                mirror_buffer->nextDecryptCount = n - m;
++                return;
++            }
+         }
+     }
+     // Handling encrypted bytes
