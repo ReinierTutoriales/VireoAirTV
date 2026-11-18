@@ -1,0 +1,84 @@
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Subject: [PATCH] bplist: bound total payload copied during reference expansion
+
+A binary plist can reference one large data or string object many times; each
+reference copies the payload. A 1 MB input with 2000 references to a 1 MB data
+object made plist_from_bin() allocate about 2 GB. Limit the copied payload to
+4 times the input plus 1 MiB, next to the existing max_nodes limit.
+---
+diff --git a/src/bplist.c b/src/bplist.c
+index 663a118..f4f8f01 100644
+--- a/src/bplist.c
++++ b/src/bplist.c
+@@ -239,6 +239,8 @@ struct bplist_data {
+     uint32_t level;
+     uint64_t nodes_parsed;
+     uint64_t max_nodes;
++    uint64_t payload_bytes;
++    uint64_t max_payload_bytes;
+     ptrarray_t* used_indexes;
+     plist_err_t err;
+ };
+@@ -308,6 +310,23 @@ void plist_bin_set_debug(int debug)
+ 
+ static plist_t parse_bin_node_at_index(struct bplist_data *bplist, uint32_t node_index);
+ 
++/*
++ * Data and string payloads are copied each time their object is referenced, so a
++ * small input that references one large object many times expands into a huge
++ * allocation even within max_nodes. Bound the total payload copied while parsing.
++ */
++static int bplist_charge_payload(struct bplist_data *bplist, uint64_t bytes)
++{
++    if (bytes > bplist->max_payload_bytes - bplist->payload_bytes) {
++        PLIST_BIN_ERR("too much payload data created while parsing (reference expansion?)\n");
++        bplist->err = PLIST_ERR_PARSE;
++        return 0;
++    }
++    bplist->payload_bytes += bytes;
++    return 1;
++}
++
++
+ static plist_t bplist_node_new(plist_data_t data)
+ {
+     plist_t node = node_create(NULL, data);
+@@ -834,6 +853,9 @@ static plist_t parse_bin_node(struct bplist_data *bplist, const char** object)
+             PLIST_BIN_ERR("%s: BPLIST_DATA data bytes point outside of valid range\n", __func__);
+             return NULL;
+         }
++        if (!bplist_charge_payload(bplist, size)) {
++            return NULL;
++        }
+         return parse_data_node(object, size);
+ 
+     case BPLIST_STRING:
+@@ -841,6 +863,9 @@ static plist_t parse_bin_node(struct bplist_data *bplist, const char** object)
+             PLIST_BIN_ERR("%s: BPLIST_STRING data bytes point outside of valid range\n", __func__);
+             return NULL;
+         }
++        if (!bplist_charge_payload(bplist, size)) {
++            return NULL;
++        }
+         return parse_string_node(object, size);
+ 
+     case BPLIST_UNICODE:
+@@ -852,6 +877,9 @@ static plist_t parse_bin_node(struct bplist_data *bplist, const char** object)
+             PLIST_BIN_ERR("%s: BPLIST_UNICODE data bytes point outside of valid range\n", __func__);
+             return NULL;
+         }
++        if (!bplist_charge_payload(bplist, data_size)) {
++            return NULL;
++        }
+         return parse_unicode_node(object, size);
+ 
+     case BPLIST_SET:
+@@ -1069,6 +1097,8 @@ plist_err_t plist_from_bin(const char *plist_bin, uint32_t length, plist_t * pli
+     bplist.level = 0;
+     bplist.nodes_parsed = 0;
+     bplist.max_nodes = num_objects * 16 + 65536;
++    bplist.payload_bytes = 0;
++    bplist.max_payload_bytes = (uint64_t)length * 4 + (1 << 20);
+     bplist.used_indexes = ptr_array_new(16);
+     bplist.err = PLIST_ERR_SUCCESS;
+ 
