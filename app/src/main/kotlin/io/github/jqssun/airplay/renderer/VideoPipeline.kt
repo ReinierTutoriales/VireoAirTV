@@ -127,6 +127,8 @@ class VideoPipeline {
         egl.makeCurrent(window)
         winW = egl.query(window, EGL14.EGL_WIDTH)
         winH = egl.query(window, EGL14.EGL_HEIGHT)
+        // source vs target size decides GL resampling: needed to judge scaling quality on a device
+        Log.i(TAG, "display surface ${winW}x${winH}, video ${videoW}x${videoH}")
         // an idle source sends no new frames, so repaint last one or new surface stays black
         if (hasFrame) _render()
     }
