@@ -910,6 +910,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _lastPin = pin
         pinCallback?.invoke(pin)
         _updateMediaNotification()
+        // the PIN has to be read off the screen before any picture can arrive
+        _launchForContent()
     }
 
     override fun onMetadata(data: ByteArray) {
@@ -1196,7 +1198,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         foregroundStarted = true
     }
 
-    // like an Apple TV: audio plays in the background; the screen opens only for mirroring or video
+    // like an Apple TV: audio plays in the background; the screen opens only for mirroring, video or a PIN
     private fun _launchForContent() {
         if (prefs[Prefs.LAUNCH_ON_CONNECT]) launchMainActivity()
     }

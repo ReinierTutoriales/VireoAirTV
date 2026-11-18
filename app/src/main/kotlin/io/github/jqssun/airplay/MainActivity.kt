@@ -216,10 +216,12 @@ class MainActivity : ComponentActivity() {
         return builder.build()
     }
 
-    // a picture worth keeping on screen: mirroring, or an AirPlay video (playing or between items)
+    // something worth keeping on screen: mirroring, an AirPlay video (playing or between items),
+    // or a pairing PIN to read
     private fun _visualSession() = combine(
-        viewModel.mirroringActive, viewModel.videoPlaybackActive, viewModel.videoSessionPending
-    ) { mirroring, video, pending -> mirroring || video || pending }
+        viewModel.mirroringActive, viewModel.videoPlaybackActive, viewModel.videoSessionPending,
+        viewModel.pinCode
+    ) { mirroring, video, pending, pin -> mirroring || video || pending || pin != null }
 
     // pip only when there is a picture; an audio-only or idle connection would float an empty window
     private fun _shouldAutoPip(): Boolean =
