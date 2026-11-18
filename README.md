@@ -1,116 +1,94 @@
 # VireoAirTV
 
-Receptor AirPlay para Android TV, independiente de VireoLumaTV. Fork de [jqssun/android-airplay-server](https://github.com/jqssun/android-airplay-server) (GPL-3.0), basado en [UxPlay](https://github.com/FDH2/UxPlay).
+Receptor AirPlay para Android TV. Recibe desde el iPhone, el iPad o el Mac la duplicación de pantalla, vídeo AirPlay y música, y lo muestra en la tele sin estorbar: la app solo aparece cuando hay imagen y, al terminar, devuelve la tele a la app en la que estabas.
 
-- Arquitectura objetivo: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md)
-- Auditoría y plan: [docs/AUDITORIA.md](docs/AUDITORIA.md)
-- Sincronización con upstream: [docs/UPSTREAM.md](docs/UPSTREAM.md)
+Proyecto de [ReinierTutoriales](https://github.com/ReinierTutoriales), derivado de [jqssun/android-airplay-server](https://github.com/jqssun/android-airplay-server) y construido sobre [UxPlay](https://github.com/FDH2/UxPlay). Licencia GPL-3.0.
+
+## Qué hace
+
+- **Duplicación de pantalla** con decodificación por hardware H.264 y H.265 en modo de baja latencia. La tele escala la imagen una sola vez a su resolución nativa y se ajusta a la frecuencia del stream. Al girar el iPhone, la imagen cambia de formato con un fundido corto.
+- **Vídeo AirPlay** (YouTube y otras apps sin DRM): la tele reproduce el vídeo por su cuenta con ExoPlayer, empezando en alta calidad. El mando controla reproducir, pausar y avanzar o retroceder.
+- **Música** en ALAC (sin pérdida) o AAC, con título, artista y portada. Suena en segundo plano; los botones de reproducción del mando controlan la app del iPhone mediante DACP.
+- **Mando durante la duplicación:** el botón central y las teclas de reproducción, siguiente y anterior van a la app que suena en el iPhone.
+- **Comportamiento tipo Apple TV:** la app pasa al frente con la imagen y vuelve sola a la app anterior al terminar. Atrás hace lo mismo. Las pantallas de la app solo aparecen al abrirla desde el lanzador.
+- Imagen en ventana pequeña, PIN de emparejamiento opcional y pantalla secundaria por cable USB para Mac y iPad.
+
+No reproduce contenido con DRM de Apple (app Apple TV, Netflix y similares). Esas apps bloquean AirPlay hacia receptores sin certificar o envían la imagen en negro. El iPhone y la tele tienen que estar en la misma red.
+
+Requisitos: Android 7.0 o superior. Pensada para Android TV y Google TV con mando.
 
 ## Instalación
-Descarga `app-release.apk` de la última versión en [Releases](https://github.com/ReinierTutoriales/VireoAirTV/releases) e instálala como cualquier APK. Identificador: `com.reiniertutoriales.vireoairtv`.
 
-Para que la app se abra sola al conectar hace falta el permiso "Mostrar sobre otras apps" (Ajustes → Apps → Acceso especial). Si tu televisor no lo muestra, concédelo una vez por ADB con `scripts/provision.ps1` o `scripts/provision.sh`.
+Descarga `app-release.apk` de la [última versión](https://github.com/ReinierTutoriales/VireoAirTV/releases/latest) e instálala. El identificador es `com.reiniertutoriales.vireoairtv`.
+
+Para que la app pueda pasar al frente sola necesita el permiso de superposición ("Mostrar sobre otras apps"), que muchos televisores no ofrecen en sus ajustes. El script de aprovisionamiento lo deja todo listo por ADB: instala la APK, concede los permisos sin diálogos, excluye la app del ahorro de energía, activa el arranque al encender y ALAC, y devuelve la tele a la pantalla de inicio.
+
+```bash
+./scripts/provision.sh 192.168.1.50:5555 app-release.apk "Salón"
+```
+
+```powershell
+.\scripts\provision.ps1 -Target 192.168.1.50:5555 -ApkPath app-release.apk -ServerName "Salón"
+```
+
+Los tres argumentos son opcionales: sin APK solo aplica permisos y ajustes, y sin nombre conserva el actual.
+
+## Ajustes por ADB
+
+Cualquier ajuste se cambia desde `adb shell`. El receptor de ajustes exige `android.permission.DUMP`, así que otras apps instaladas no pueden usarlo.
+
+```bash
+am broadcast -n com.reiniertutoriales.vireoairtv/io.github.jqssun.airplay.SettingsReceiver \
+  -a io.github.jqssun.airplay.SET_SETTING --es key server_name --es value "Salón"
+
+am broadcast -n com.reiniertutoriales.vireoairtv/io.github.jqssun.airplay.SettingsReceiver \
+  -a io.github.jqssun.airplay.LIST_SETTINGS
+```
+
+`LIST_SETTINGS` devuelve todos los ajustes con su valor actual en JSON.
 
 ## Compilar
+
 ```bash
 git clone --recursive https://github.com/ReinierTutoriales/VireoAirTV
-cd VireoAirTV && ./gradlew assembleDebug testDebugUnitTest lintDebug
+cd VireoAirTV
+./gradlew assembleDebug testDebugUnitTest lintDebug   # -PabiFilter=arm64-v8a para una sola arquitectura
+./gradlew assembleSanitize                            # HWASan + UBSan, arm64
+./scripts/native-regress.sh                           # pruebas nativas de seguridad (tras compilar)
 ```
 
----
+Necesita JDK 25, el NDK 30 y CMake 4.1.2. La CI compila, prueba y pasa lint en cada PR y en cada cambio en `main`. Las versiones firmadas se publican desde [`apk.yml`](.github/workflows/apk.yml).
 
-## README original (upstream)
-
-# AirPlay Receiver for Android
-
-[![Stars](https://img.shields.io/github/stars/jqssun/android-airplay-server)](https://github.com/jqssun/android-airplay-server)
-[![GitHub](https://img.shields.io/github/downloads/jqssun/android-airplay-server/total?label=GitHub&logo=GitHub)](https://github.com/jqssun/android-airplay-server/releases)
-[![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/jqssun/android-airplay-server/blob/main/LICENSE)
-[![build](https://img.shields.io/github/actions/workflow/status/jqssun/android-airplay-server/apk.yml?label=build)](https://github.com/jqssun/android-airplay-server/actions/workflows/apk.yml)
-[![release](https://img.shields.io/github/v/release/jqssun/android-airplay-server)](https://github.com/jqssun/android-airplay-server/releases)
-
-A fully featured free and open-source implementation of AirPlay for Android that turns your device into an AirPlay-compatible display and speaker, based on [UxPlay](https://github.com/FDH2/UxPlay). It is the first open-source AirPlay 2 receiver for Android and Android TV, and works with iOS/iPadOS, macOS devices as well as other sender implementations.
-
-[<img height="48" alt="Get it on Google Play" src="https://jqssun.github.io/images/badges/google-play-store.svg">](https://play.google.com/store/apps/details?id=io.github.jqssun.airplay)
-[<img height="48" alt="Get it on F-Droid" src="https://jqssun.github.io/images/badges/fdroid.svg">](https://f-droid.org/packages/io.github.jqssun.airplay)
-[<img height="48" alt="Get it on GitHub" src="https://jqssun.github.io/images/badges/github.svg">](https://github.com/jqssun/android-airplay-server/releases/latest)
-
-<video loop src='https://github.com/user-attachments/assets/79ed7c0c-0102-43cc-8816-4f00ce6a4199' alt="demo" width="200" style="display: block; margin: auto;"></video>
-
-## Compatibility
-
-- Android 7.0+, including Android TV
-- AirPlay devices on the same subnet, including iOS/iPadOS, macOS devices, or other sender implementations
-
-## Features
-
-- Screen mirroring with H.264 and H.265 (HEVC) video decoding
-- Audio streaming with AAC-ELD, AAC-LC and ALAC audio decoding
-- Video playback with support for HLS, downloads, and remote controls
-- Music playback with track information, cover art, and remote controls
-- Support for Android TV with directional pad navigation and seeking controls
-- Support for Picture-in-Picture, automatic resolution and mode switching
-- Optional PIN authentication
-- Video resolution, overscan, and frame rate control
-- Audio latency control and support for software decoder fallback
-- Debug overlay with real-time statistics (FPS, bitrate, codec, resolution, frame count, audio volume, etc.)
-- Android native media session integration with notification controls
-- Wired secondary display for macOS/iPadOS devices over USB tethering
-
-> [!WARNING]
-> DRM content (e.g. from the Apple TV application) is not supported.
-
-## Configure from ADB
-
-On devices without a display, settings can also be changed over ADB. The receiver is protected by `android.permission.DUMP` so regular installed apps cannot change them. Values are passed as text using `--es`. Using `adb shell`:
-
-```bash
-export KEY="server_name" VALUE="Speaker"
-am broadcast -n io.github.jqssun.airplay/.SettingsReceiver -a io.github.jqssun.airplay.SET_SETTING --es key "$KEY" --es value "$VALUE"
-```
-
-To list all settings with their current values as JSON:
-
-```bash
-am start -n io.github.jqssun.airplay/.MainActivity
-am broadcast -n io.github.jqssun.airplay/.SettingsReceiver -a io.github.jqssun.airplay.LIST_SETTINGS
-```
-
-## Implementation
-
-This application uses the C-based [UxPlay](https://github.com/FDH2/UxPlay) library to implement the AirPlay/RAOP protocol, with a JNI bridge to the Android application layer. Audio can be decoded via MediaCodec or a software ALAC decoder, while mirroring video is decoded via MediaCodec and rendered to a SurfaceView. HLS sessions are served through a local playlist proxy.
-
-When using USB tethering, the Android device can act as a reliable secondary display over a wired connection. Apple devices natively support USB tethering over CDC-NCM, so on Android devices that default to RNDIS, you may need to switch to CDC-NCM over ADB:
-
-```bash
-adb shell settings put global tether_force_usb_functions 1
-```
+## Cómo está hecho
 
 ```mermaid
 flowchart LR
-    AppleDevice["Apple Device (Sender)"]
-    UxPlay["UxPlay (C/JNI)<br/>RAOP + mDNS<br/>FairPlay + HLS"]
-    AndroidApp["Android (Receiver)<br/>MediaCodec + AudioTrack<br/>ExoPlayer (HLS)"]
+    Emisor["iPhone, iPad o Mac"]
+    UxPlay["UxPlay (C, JNI)<br/>RAOP, mDNS, FairPlay, HLS"]
+    App["App Android<br/>MediaCodec + GL, Oboe, ExoPlayer"]
 
-    AppleDevice -- "RAOP / HLS" --> UxPlay
-    UxPlay --> AndroidApp
+    Emisor -- "AirPlay" --> UxPlay
+    UxPlay --> App
 ```
 
-CMake is used for native C/C++ components under [`app/src/main/cpp`](app/src/main/cpp). Submodules must be initialized before building. 
+- `app/src/main/cpp/`: puente JNI y código nativo. UxPlay, libplist, OpenSSL 4.1 y FFmpeg 9 (solo los decodificadores ALAC y AAC) son submódulos.
+- `app/src/main/cpp/patches/`: los cambios sobre UxPlay y libplist van como parches numerados que Gradle aplica antes de compilar. Incluyen correcciones portadas de UxPlay y de sus PR abiertos, y defensas propias frente a mensajes abusivos en la red.
+- `app/src/main/kotlin/`: app en Kotlin con Jetpack Compose, Hilt y Media3.
 
-```bash
-git submodule update --init --recursive
-./gradlew assembleDebug
-```
+Documentación del proyecto:
 
-Check out the [CI](https://github.com/jqssun/android-airplay-server/blob/main/.github/workflows/apk.yml) for more details on reproducible builds.
+- [Arquitectura](docs/ARQUITECTURA.md)
+- [Estado verificado y pendientes](docs/AUDITORIA.md)
+- [Auditoría de UxPlay y de las correcciones portadas](docs/AUDITORIA-REFERENCIAS.md)
+- [Sincronización con upstream](docs/UPSTREAM.md)
 
-## Credits
+## Créditos y licencia
 
-- [UxPlay](https://github.com/FDH2/UxPlay) for the AirPlay/RAOP server implementation
-- [FFmpeg](https://ffmpeg.org) for the lossless audio decoder
-- [Next Player](https://github.com/anilbeesetti/nextplayer) for the video player
+- [jqssun/android-airplay-server](https://github.com/jqssun/android-airplay-server), base de este proyecto (GPL-3.0).
+- [UxPlay](https://github.com/FDH2/UxPlay), servidor AirPlay/RAOP.
+- [libplist](https://github.com/libimobiledevice/libplist), [OpenSSL](https://www.openssl.org) y [FFmpeg](https://ffmpeg.org), cada uno con su licencia dentro de su submódulo.
+- [Next Player](https://github.com/anilbeesetti/nextplayer), por el reproductor de vídeo (crédito heredado de jqssun).
 
----
+VireoAirTV se distribuye bajo GPL-3.0; consulta [LICENSE](LICENSE) y [NOTICE.md](NOTICE.md).
 
-Disclaimer: This project is not affiliated with Apple Inc.
+No está afiliado a Apple Inc. AirPlay es una marca de Apple Inc.
