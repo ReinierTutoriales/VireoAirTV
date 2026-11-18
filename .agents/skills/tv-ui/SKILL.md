@@ -43,3 +43,4 @@ The app is not the protagonist; the sender's picture is.
 ## After moving a screen, check where focus lands
 - When a screen closes, the next focused control must be the one the user expects; landing on Stop, Delete or Disconnect turns OK into a destructive action (the Overview card fix in 74342f3).
 - A replaced code path is deleted in the same commit, including parameters and state kept only for it.
+- An overlay that must hold the remote handles keys at the screen root with `onPreviewKeyEvent`, not on its own node: screens composed below can keep focus, and a node only sees keys while it or a child is focused. Test it by pressing keys and asserting the result, not by looking at the screenshot.
