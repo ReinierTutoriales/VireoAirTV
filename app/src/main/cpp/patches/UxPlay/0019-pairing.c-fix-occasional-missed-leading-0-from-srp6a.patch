@@ -1,0 +1,44 @@
+From fe1166cc6c8ad9acd5aaf9dc76a19000923c6d6e Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Mon, 26 Oct 2026 21:29:42 -0400
+Subject: [PATCH 19/29] pairing.c fix occasional missed leading 0 (from srp6a
+ bn)
+
+reported by @jstayton (error will occur in 2 x 1/256 uses)
+
+(cherry picked from commit 28ed70a9876fe3f5864479f4e0d07abe4678383a)
+---
+ lib/pairing.c | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/lib/pairing.c b/lib/pairing.c
+index 81a8df5..bfad9c1 100644
+--- a/lib/pairing.c
++++ b/lib/pairing.c
+@@ -532,12 +532,23 @@ srp_new_user(pairing_session_t *session, pairing_t *pairing, const char *device_
+                                        (const unsigned char **) &srp_s, &len_s,
+                                        (const unsigned char **) &srp_v, &len_v,
+                                        NULL, NULL);
+-    if (len_s != SRP_SALT_SIZE || len_v != SRP_VERIFIER_SIZE) {
++
++    /* srp_create_salted_verification_key does not return leading zeros of srp_s and srp_v */
++    int s_offset = SRP_SALT_SIZE - len_s;
++    int v_offset = SRP_VERIFIER_SIZE - len_v;
++    
++    if (s_offset < 0 || v_offset < 0) {
+         return -3;
+     }
+ 
+-    memcpy(session->srp->salt, srp_s, SRP_SALT_SIZE);
+-    memcpy(session->srp->verifier, srp_v, SRP_VERIFIER_SIZE);
++    memcpy(session->srp->salt + s_offset, srp_s, len_s);
++    memcpy(session->srp->verifier + v_offset, srp_v, len_v);
++    if (s_offset) {
++        memset(session->srp->salt, 0, s_offset);
++    }
++    if (v_offset) {
++        memset(session->srp->verifier, 0, v_offset);
++    }
+ 
+     *salt = (char *) session->srp->salt;
+     *len_salt = len_s;
