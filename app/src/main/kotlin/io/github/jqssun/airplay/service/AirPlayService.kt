@@ -1328,8 +1328,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // shared with dpad/double-tap seeks
         const val VIDEO_SEEK_STEP_MS = 10_000L
         private const val SESSION_ID = "AirPlay"
-        // a 3000px cover decodes to ~36 MB; 720px covers the notification and the TV player
-        private const val COVER_ART_MAX_PX = 720
+        // the TV player shows covers large on 1080p/4K panels: only oversized originals (>= 2x this) are reduced
+        private const val COVER_ART_MAX_PX = 1920
         private const val COVER_ART_JPEG_QUALITY = 90
         const val VIDEO_POLL_PENDING_TIMEOUT_MS = 3_000L
         // long enough for a sender to queue the next track, short enough that a real stop still exits
