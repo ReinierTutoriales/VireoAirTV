@@ -1,0 +1,35 @@
+From 742dde68879b02ea3424fe9a7cfa93ec19357d31 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Mon, 2 Nov 2026 19:10:28 -0500
+Subject: [PATCH 21/29] fixes from @boyan01
+
+(1) MUTEX in httpd   (2) set rtp_session_dsock to NULL
+after removing
+fixes #631
+
+(cherry picked from commit 5812f849cb77440c46e501e916cf0e471714bda8)
+---
+ lib/httpd.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/lib/httpd.c b/lib/httpd.c
+index 523b0ca..9e94b01 100644
+--- a/lib/httpd.c
++++ b/lib/httpd.c
+@@ -192,7 +192,7 @@ httpd_init(logger_t *logger, httpd_callbacks_t *callbacks, int nohold)
+     /* Initial status joined */
+     httpd->running = 0;
+     httpd->joined = 1;
+-
++    MUTEX_CREATE(httpd->run_mutex);
+     return httpd;
+ }
+ 
+@@ -201,6 +201,7 @@ httpd_destroy(httpd_t *httpd)
+ {
+     if (httpd) {
+         httpd_stop(httpd);
++	MUTEX_DESTROY(httpd->run_mutex);
+         free(httpd->connections);
+         free(httpd);
+     }
