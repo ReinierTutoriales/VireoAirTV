@@ -209,8 +209,11 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     }
 
     init {
-        loadPersistedLogs()
-        startLogPersistenceLoop()
+        // restore first: a write before the restore finishes would truncate the previous session's log
+        viewModelScope.launch(Dispatchers.IO) {
+            loadPersistedLogs()
+            persistLogs()
+        }
     }
 
     fun addLog(msg: String) {
@@ -255,32 +258,28 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     }
 
     private fun loadPersistedLogs() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val restored = runCatching {
-                if (logFile.exists()) logFile.readLines().takeLast(MAX_LOG_LINES) else emptyList()
-            }.getOrDefault(emptyList())
-            if (restored.isEmpty()) return@launch
-            val snapshot: List<String>
-            synchronized(_logLock) {
-                val merged = (restored + _logList).takeLast(MAX_LOG_LINES)
-                _logList.clear()
-                _logList.addAll(merged)
-                snapshot = _logList.toList()
-            }
-            _logs.value = snapshot
+        val restored = runCatching {
+            if (logFile.exists()) logFile.readLines().takeLast(MAX_LOG_LINES) else emptyList()
+        }.getOrDefault(emptyList())
+        if (restored.isEmpty()) return
+        val snapshot: List<String>
+        synchronized(_logLock) {
+            val merged = (restored + _logList).takeLast(MAX_LOG_LINES)
+            _logList.clear()
+            _logList.addAll(merged)
+            snapshot = _logList.toList()
         }
+        _logs.value = snapshot
     }
 
-    private fun startLogPersistenceLoop() {
-        viewModelScope.launch(Dispatchers.IO) {
-            for (ignored in _persistTrigger) {
-                delay(LOG_PERSIST_INTERVAL_MS)
-                _persistTrigger.tryReceive()
-                val snapshot = synchronized(_logLock) { _logList.toList() }
-                if (snapshot.isNotEmpty()) {
-                    runCatching {
-                        logFile.writeText(snapshot.joinToString("\n"))
-                    }
+    private suspend fun persistLogs() {
+        for (ignored in _persistTrigger) {
+            delay(LOG_PERSIST_INTERVAL_MS)
+            _persistTrigger.tryReceive()
+            val snapshot = synchronized(_logLock) { _logList.toList() }
+            if (snapshot.isNotEmpty()) {
+                runCatching {
+                    logFile.writeText(snapshot.joinToString("\n"))
                 }
             }
         }
