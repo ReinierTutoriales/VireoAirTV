@@ -79,7 +79,8 @@ object Prefs {
     val RUN_IN_BACKGROUND = bool("run_in_background", true)
     val H265 = tri("h265", restart = true)
     val ENFORCE_SDR = bool("enforce_sdr", true, restart = true)
-    val KEY_ALLOW_FRAME_DROP = bool(MediaFormat.KEY_ALLOW_FRAME_DROP, true, restart = true)
+    // MediaFormat.KEY_ALLOW_FRAME_DROP; literal so the stored key does not depend on API 31 constants
+    val KEY_ALLOW_FRAME_DROP = bool("allow-frame-drop", true, restart = true)
     val KEY_PRIORITY = bool(MediaFormat.KEY_PRIORITY, true, restart = true)
     val LOW_LATENCY = bool("low_latency", false)
     val OPERATING_RATE = tri("operating_rate", restart = true)

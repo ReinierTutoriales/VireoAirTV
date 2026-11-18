@@ -15,10 +15,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 fun VideoSurfaceView(
     onSurfaceAvailable: (Surface) -> Unit,
     onSurfaceDestroyed: (Surface) -> Unit,
+    modifier: Modifier = Modifier,
     aspectRatio: Float = 16f / 9f,
     // false = caller sizes the surface (content-scale modes)
     applyAspectRatio: Boolean = true,
-    modifier: Modifier = Modifier
 ) {
     val callbacks = remember {
         object : SurfaceHolder.Callback {

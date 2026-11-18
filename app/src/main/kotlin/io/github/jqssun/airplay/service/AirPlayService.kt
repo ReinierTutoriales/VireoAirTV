@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.service
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -33,6 +34,7 @@ import android.view.Surface
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.os.ConfigurationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
@@ -401,6 +403,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _startServer(ensureServiceStarted = true)
     }
 
+    // the wakelock spans the server lifetime so the receiver stays reachable; _shutdown/_failStart release it
+    @SuppressLint("WakelockTimeout")
     private fun _startServer(ensureServiceStarted: Boolean) {
         if (_serverState.value == ServerState.RUNNING) return
         if (!hasLocalNetwork()) {
@@ -1105,7 +1109,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         repeat(10) {
             val mac = randomAaiMac()
             if (isUsableMac(mac)) {
-                prefs.edit().putString(Prefs.FALLBACK_MAC_ADDRESS, macToString(mac)).apply()
+                prefs.edit { putString(Prefs.FALLBACK_MAC_ADDRESS, macToString(mac)) }
                 return mac
             }
         }
@@ -1151,6 +1155,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         return _buildMediaNotification()
     }
 
+    // ServiceCompat drops the type below API 29, so the inlined constant is safe on 24-28
+    @SuppressLint("InlinedApi")
     private fun promoteToForeground() {
         ServiceCompat.startForeground(
             this,
@@ -1245,7 +1251,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
 
-        if (includeOverlayAction && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (includeOverlayAction) {
             val overlayIntent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.fromParts("package", packageName, null)

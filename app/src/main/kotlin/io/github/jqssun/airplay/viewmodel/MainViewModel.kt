@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.viewmodel
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
 import android.content.Intent
@@ -83,6 +84,8 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
 
     private val prefs = app.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
     private val logFile = File(app.filesDir, "airplay_logs.txt")
+    // a Service, not an Activity: lives as long as the receiver and is cleared in unbindService
+    @SuppressLint("StaticFieldLeak")
     private var service: AirPlayService? = null
     val dacpPlayer: Player? get() = service?.dacpPlayer
 

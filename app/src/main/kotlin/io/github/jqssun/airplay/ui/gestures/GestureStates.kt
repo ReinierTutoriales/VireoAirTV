@@ -177,7 +177,8 @@ class ServerVolumeState(private val context: Context) {
                 device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
                 device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                 device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                device.type == AudioDeviceInfo.TYPE_USB_HEADSET
+                // value 22; simply never matches on API 24-25
+                device.type == 22 /* AudioDeviceInfo.TYPE_USB_HEADSET */
         }
 }
 

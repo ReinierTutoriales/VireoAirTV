@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -118,7 +119,7 @@ fun DoubleTapIndicator(tapGestureState: TapGestureState, modifier: Modifier = Mo
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 SeekTriangles(forward = forward)
                 Text(
-                    text = stringResource(R.string.gesture_seek_seconds, tapGestureState.seekMillis / 1000),
+                    text = (tapGestureState.seekMillis / 1000).toInt().let { pluralStringResource(R.plurals.gesture_seek_seconds, it, it) },
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
                 )

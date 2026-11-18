@@ -67,6 +67,7 @@ import io.github.jqssun.airplay.viewmodel.DebugInfo
 import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
@@ -733,7 +734,7 @@ private fun OverviewContent(
                         )
                         Text(
                             text = if (grant) stringResource(R.string.local_network_label) else when (state) {
-                                ServerState.RUNNING -> stringResource(R.string.connected_count, connections)
+                                ServerState.RUNNING -> pluralStringResource(R.plurals.connected_count, connections, connections)
                                 ServerState.ERROR -> stringResource(R.string.error_label)
                                 ServerState.STOPPED -> stringResource(R.string.stopped_label)
                             },
@@ -782,7 +783,7 @@ private fun FullscreenVideo(
     val debugInfo by viewModel.debugInfo.collectAsState()
 
     var controlsVisible by remember { mutableStateOf(true) }
-    var tapTick by remember { mutableStateOf(0) }
+    var tapTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(tapTick) {
         controlsVisible = true
         delay(8000)

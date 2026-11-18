@@ -234,7 +234,8 @@ class VideoRenderer(ctx: Context) {
             setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
         }
         if (android.os.Build.VERSION.SDK_INT >= 29) {
-            setInteger(MediaFormat.KEY_ALLOW_FRAME_DROP, if (keyAllowFrameDrop) 1 else 0)
+            // honoured since Q; the public constant only arrived in API 31
+            setInteger("allow-frame-drop", if (keyAllowFrameDrop) 1 else 0)
         }
     }
 

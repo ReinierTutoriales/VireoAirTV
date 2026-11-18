@@ -190,7 +190,7 @@ class MainActivity : ComponentActivity() {
         val rational = Rational((aspect * 1000).toInt().coerceIn(1, 2390), 1000)
         val builder = PictureInPictureParams.Builder().setAspectRatio(rational)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(_shouldAutoPip())
+            builder.setAutoEnterEnabled(_shouldAutoPip()).setSeamlessResizeEnabled(true)
         }
         return builder.build()
     }
