@@ -92,6 +92,17 @@ falla tras una pausa larga, es el primer sospechoso.
   terminar el mirroring. Un cambio de modo no instantáneo puede dejar la pantalla en negro un momento.
 - Media3 solo ofrece `OFF` y `ONLY_IF_SEAMLESS` para el cambio de frecuencia en HLS: no se toca.
 
+## Tercera pasada: fluidez, giro y cambios entre apps (2026-11-18)
+- Portado `f0dd27d` (parche 0031): al saltar entre vídeos AirPlay (YouTube, podcasts) el receptor podía
+  caerse en release por un `assert` compilado fuera.
+- Sin portar, a propósito: reescritura de NTP con marcas de tiempo del kernel (`4bfa594`, `aec205d`,
+  `2186897`, `9f3c2bb`, `660e1ad`, `4c6e017`, `8ef6776`/`3dbf7ce`, `0230602`) y su arreglo posterior
+  `dc5ce10`, que corrige una regresión introducida por la propia reescritura (sin él la sincronía cae al
+  tiempo de llegada de los paquetes). Toca 4 archivos centrales y la API de NTP; solo tiene sentido
+  portarla entera y medir A/V en la TV.
+- Sin portar: filtro de variantes HLS por códecs del host (`35bc295`), depende del callback
+  `get_custom_profile` de `master`.
+
 ## Verificado
 `assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
 `scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.
