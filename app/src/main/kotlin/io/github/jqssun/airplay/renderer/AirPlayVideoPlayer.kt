@@ -17,7 +17,12 @@ import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.util.Util
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 
 // rate is 0 while buffering; speed is the configured rate regardless of pause state
@@ -49,7 +54,11 @@ class AirPlayVideoPlayer(private val context: Context) {
     // senders hand over URLs meant for an Apple TV; some CDNs reject other user agents (UxPlay PR #625)
     private val mediaSourceFactory by lazy {
         val http = DefaultHttpDataSource.Factory().setUserAgent(HLS_USER_AGENT)
-        DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http))
+        val data = DefaultDataSource.Factory(context, http)
+        HlsAwareFactory(
+            HlsMediaSource.Factory(data).setPlaylistParserFactory(YtDubFilterParserFactory()),
+            DefaultMediaSourceFactory(data),
+        )
     }
 
     var onPlaybackInfo: ((PlaybackSnapshot) -> Unit)? = null
@@ -236,5 +245,25 @@ class AirPlayVideoPlayer(private val context: Context) {
         private const val INITIAL_BITRATE_ESTIMATE_BPS = 20_000_000L
         private const val HLS_USER_AGENT =
             "AppleCoreMedia/1.0.0.21L569 (Apple TV; U; CPU OS 17_4 like Mac OS X; en_us)"
+    }
+}
+
+// HLS goes through HlsMediaSource with the YouTube dub filter; everything else through the default factory
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private class HlsAwareFactory(
+    private val hls: HlsMediaSource.Factory,
+    private val other: DefaultMediaSourceFactory,
+) : MediaSource.Factory {
+    override fun setDrmSessionManagerProvider(provider: DrmSessionManagerProvider): MediaSource.Factory {
+        hls.setDrmSessionManagerProvider(provider); other.setDrmSessionManagerProvider(provider); return this
+    }
+    override fun setLoadErrorHandlingPolicy(policy: LoadErrorHandlingPolicy): MediaSource.Factory {
+        hls.setLoadErrorHandlingPolicy(policy); other.setLoadErrorHandlingPolicy(policy); return this
+    }
+    override fun getSupportedTypes(): IntArray = other.supportedTypes
+    override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+        val config = mediaItem.localConfiguration
+        val isHls = config != null && Util.inferContentTypeForUriAndMimeType(config.uri, config.mimeType) == C.CONTENT_TYPE_HLS
+        return if (isHls) hls.createMediaSource(mediaItem) else other.createMediaSource(mediaItem)
     }
 }
