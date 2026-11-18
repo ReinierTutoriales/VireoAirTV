@@ -1163,6 +1163,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         return prefs[Prefs.LAUNCH_ON_CONNECT]
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun _buildMediaNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)

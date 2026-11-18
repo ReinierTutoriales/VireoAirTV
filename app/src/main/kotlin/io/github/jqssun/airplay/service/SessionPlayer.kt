@@ -127,6 +127,7 @@ class SessionPlayer(
             Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> controls.previous()
             Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM, Player.COMMAND_SEEK_FORWARD, Player.COMMAND_SEEK_BACK ->
                 controls.seekTo(positionMs.coerceAtLeast(0))
+            else -> Unit
         }
         return Futures.immediateVoidFuture()
     }
