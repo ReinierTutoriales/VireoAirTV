@@ -41,6 +41,9 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private var service: AirPlayService? = null
     val isInPip = mutableStateOf(false)
+    // brought up by the service for a mirroring/video session: give the screen back when it ends
+    private var autoLaunched = false
+    private var sawVisual = false
     private val logCallback: (String) -> Unit = { viewModel.addLog(it) }
     private val pinCallback: (String?) -> Unit = { viewModel.showPin(it) }
 
@@ -67,6 +70,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) autoLaunched = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
 
         val missing = buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !_granted(Manifest.permission.POST_NOTIFICATIONS)) {
@@ -102,6 +106,21 @@ class MainActivity : ComponentActivity() {
                 }.collect { on ->
                     if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+
+        // return to the previous app once nothing is shown; the delay covers video handoffs between items
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                _visualSession().distinctUntilChanged().collectLatest { visible ->
+                    if (visible) { sawVisual = true; return@collectLatest }
+                    // only after a picture was shown: the service binding starts out all false
+                    if (!autoLaunched || !sawVisual || isInPip.value) return@collectLatest
+                    delay(RETURN_DELAY_MS)
+                    autoLaunched = false
+                    sawVisual = false
+                    moveTaskToBack(true)
                 }
             }
         }
@@ -195,9 +214,21 @@ class MainActivity : ComponentActivity() {
         return builder.build()
     }
 
+    // a picture worth keeping on screen: mirroring, or an AirPlay video (playing or between items)
+    private fun _visualSession() = combine(
+        viewModel.mirroringActive, viewModel.videoPlaybackActive, viewModel.videoSessionPending
+    ) { mirroring, video, pending -> mirroring || video || pending }
+
     private fun _shouldAutoPip(): Boolean =
         viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
             viewModel.connectionCount.value > 0
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // launcher or notification taps from the user keep the app open after the session
+        autoLaunched = intent.getBooleanExtra(AirPlayService.EXTRA_AUTO_LAUNCH, false)
+    }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
@@ -226,5 +257,9 @@ class MainActivity : ComponentActivity() {
         }
         unbindService(connection)
         super.onDestroy()
+    }
+
+    companion object {
+        private const val RETURN_DELAY_MS = 2_000L
     }
 }

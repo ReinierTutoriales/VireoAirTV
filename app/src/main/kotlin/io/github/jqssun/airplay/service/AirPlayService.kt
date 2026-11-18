@@ -728,6 +728,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoFrameShown.value = false
         _videoTitle.value = ""
         _videoPlaybackActive.value = true
+        _launchForContent()
         airPlayVideoPlayer.play(location, startPositionSeconds)
         // claim media-button routing for keys that arrive as media-session events
         _setSessionActive(true)
@@ -763,6 +764,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _videoResolution.value = "${w.toInt()}x${h.toInt()}"
             videoRenderer.setResolution(w.toInt(), h.toInt())
             _mirrorSize.value = w.toInt() to h.toInt()
+            if (!_mirroringActive.value) _launchForContent()
             _mirroringActive.value = true
         }
         log("Video size: ${srcW}x${srcH} -> ${w}x${h}")
@@ -863,10 +865,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onConnectionInit() {
-        val firstConnection = _connectionCount.value == 0
         _connectionCount.value++
         log("Sender connected (${_connectionCount.value})")
-        if (firstConnection && shouldLaunchOnConnect()) launchMainActivity()
     }
 
     override fun onConnectionDestroy() {
@@ -1196,8 +1196,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         foregroundStarted = true
     }
 
-    private fun shouldLaunchOnConnect(): Boolean {
-        return prefs[Prefs.LAUNCH_ON_CONNECT]
+    // like an Apple TV: audio plays in the background; the screen opens only for mirroring or video
+    private fun _launchForContent() {
+        if (prefs[Prefs.LAUNCH_ON_CONNECT]) launchMainActivity()
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -1242,6 +1243,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             if (_isAppInForeground()) return@post
             val launchIntent = Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra(EXTRA_AUTO_LAUNCH, true)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !Settings.canDrawOverlays(this)) {
                 log("Overlay permission missing; posting launch notification")
                 _notifyLaunchFallback(launchIntent, includeOverlayAction = true)
@@ -1325,6 +1327,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     companion object {
         private const val TAG = "AirPlayService"
+        // set when the service brought the activity up; the activity returns to the previous app afterwards
+        const val EXTRA_AUTO_LAUNCH = "io.github.jqssun.airplay.AUTO_LAUNCH"
         private const val CLIENT_VOL_EPS = 0.033f
         private const val CLIENT_VOL_MAX_STEPS = 32
         private const val CLIENT_VOL_TIMEOUT_MS = 800L
