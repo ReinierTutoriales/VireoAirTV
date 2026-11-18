@@ -107,15 +107,18 @@ android {
 }
 
 tasks.register("applyUxplayPatches") {
+    // resolved at configuration time: the action must not reference the project (configuration cache)
+    val uxplayDir = layout.projectDirectory.dir("src/main/cpp/third_party/UxPlay").asFile
+    val patchDir = layout.projectDirectory.dir("src/main/cpp/patches/UxPlay").asFile
     doLast {
         fun git(vararg args: String): String {
-            val proc = ProcessBuilder("git", "-C", "$projectDir/src/main/cpp/third_party/UxPlay", *args)
+            val proc = ProcessBuilder("git", "-C", uxplayDir.path, *args)
                 .redirectErrorStream(true).start()
             val out = proc.inputStream.bufferedReader().readText()
             check(proc.waitFor() == 0) { "git ${args.joinToString(" ")} failed:\n$out" }
             return out
         }
-        val patches = file("src/main/cpp/patches/UxPlay").listFiles { f -> f.extension == "patch" }!!.sorted()
+        val patches = patchDir.listFiles { f -> f.extension == "patch" }!!.sorted()
         val touched = patches.flatMap { git("apply", "--numstat", it.path).trim().lines() }
             .map { it.substringAfterLast("\t") }.distinct()
         git("checkout", "--", *touched.toTypedArray())
