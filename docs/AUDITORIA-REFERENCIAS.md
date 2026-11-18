@@ -103,6 +103,22 @@ falla tras una pausa larga, es el primer sospechoso.
 - Sin portar: filtro de variantes HLS por códecs del host (`35bc295`), depende del callback
   `get_custom_profile` de `master`.
 
+## Cuarta pasada: CastBay y sincronía NTP (2026-11-18, rama `develop`)
+[CastBay](https://github.com/weenas/castbay) (GPL-3.0) es otro receptor Android TV sobre UxPlay, con
+UxPlay fijado en `e3599e8` (24-09-2026, ya con la reescritura NTP pero sin `dc5ce10`).
+
+Portado:
+- Prueba real del decodificador H.265 antes de anunciarlo (`HevcSelfTest` y su clip), con veredicto
+  guardado por decodificador y `Build.FINGERPRINT`; si no da imagen, el receptor se reinicia solo con H.264.
+- Elección de pistas de audio y subtítulos en vídeo AirPlay (`MediaTracks`) y dibujo de los subtítulos de
+  texto, que antes no se mostraban.
+- Parches 0032–0043: reescritura NTP de UxPlay 1.74 con marcas de tiempo del kernel (`SO_TIMESTAMP`,
+  reloj `CLOCK_REALTIME` igual que `raop_ntp_get_local_time`, con comprobación de coherencia y vuelta al
+  reloj de usuario), sus arreglos (`4c86094`, `dc5ce10`, `0230602`) y la fuga `b29411f`, que ya aplica.
+
+Pendiente de CastBay: control de acceso por dispositivo, menú rápido (ajuste de imagen, estadísticas),
+DLNA.
+
 ## Verificado
 `assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
 `scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.
