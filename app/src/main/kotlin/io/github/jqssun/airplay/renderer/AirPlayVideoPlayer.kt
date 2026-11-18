@@ -12,7 +12,10 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 
 // rate is 0 while buffering; speed is the configured rate regardless of pause state
@@ -40,6 +43,11 @@ class AirPlayVideoPlayer(private val context: Context) {
     // the default estimate is tuned for phones on mobile data and opens TV playback at the lowest rendition
     private val bandwidthMeter by lazy {
         DefaultBandwidthMeter.Builder(context).setInitialBitrateEstimate(INITIAL_BITRATE_ESTIMATE_BPS).build()
+    }
+    // senders hand over URLs meant for an Apple TV; some CDNs reject other user agents (UxPlay PR #625)
+    private val mediaSourceFactory by lazy {
+        val http = DefaultHttpDataSource.Factory().setUserAgent(HLS_USER_AGENT)
+        DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http))
     }
 
     var onPlaybackInfo: ((PlaybackSnapshot) -> Unit)? = null
@@ -79,7 +87,10 @@ class AirPlayVideoPlayer(private val context: Context) {
     fun play(location: String, startPositionSeconds: Float) = mainHandler.post {
         // recycling must not report the stopped sentinel: senders poll right after /play
         _stopInternal(reportStopped = false)
-        val p = ExoPlayer.Builder(context).setBandwidthMeter(bandwidthMeter).build().also {
+        val p = ExoPlayer.Builder(context)
+            .setBandwidthMeter(bandwidthMeter)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().also {
             it.addListener(_listener)
             pendingSurface?.let { s -> it.setVideoSurface(s) }
             it.volume = clientGain
@@ -197,5 +208,7 @@ class AirPlayVideoPlayer(private val context: Context) {
         private const val REPORT_INTERVAL_MS = 250L
         // LAN-connected TV; ABR still steps down if the measured throughput is lower
         private const val INITIAL_BITRATE_ESTIMATE_BPS = 20_000_000L
+        private const val HLS_USER_AGENT =
+            "AppleCoreMedia/1.0.0.21L569 (Apple TV; U; CPU OS 17_4 like Mac OS X; en_us)"
     }
 }
