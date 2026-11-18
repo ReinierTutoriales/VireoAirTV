@@ -93,6 +93,8 @@ android {
     }
 
     testOptions {
+        // Robolectric renders Compose screens for the layout screenshots in src/test
+        unitTests.isIncludeAndroidResources = true
         unitTests.all { it.useJUnitPlatform() }
     }
 
@@ -170,4 +172,11 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+    // JUnit 4 tests (Robolectric) run on the JUnit Platform through the vintage engine
+    testRuntimeOnly(libs.junit.vintage.engine)
+    testImplementation(libs.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
