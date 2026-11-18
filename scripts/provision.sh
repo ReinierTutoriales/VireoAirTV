@@ -28,6 +28,10 @@ fi
 run_adb shell appops set "$PACKAGE_NAME" SYSTEM_ALERT_WINDOW allow
 run_adb shell dumpsys deviceidle whitelist "+$PACKAGE_NAME"
 
+# A fresh install stays in the "stopped" state and receives no broadcasts (BOOT_COMPLETED,
+# SettingsReceiver) until one of its components is launched once
+run_adb shell am start -W -n "$PACKAGE_NAME/io.github.jqssun.airplay.MainActivity" >/dev/null
+
 set_setting() {
   local key="$1"
   local value="$2"

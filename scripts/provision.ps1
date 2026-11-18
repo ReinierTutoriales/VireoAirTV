@@ -36,6 +36,10 @@ if ($ApkPath) {
 Invoke-Adb @("shell", "appops", "set", $PackageName, "SYSTEM_ALERT_WINDOW", "allow") | Out-Null
 Invoke-Adb @("shell", "dumpsys", "deviceidle", "whitelist", "+$PackageName") | Out-Null
 
+# A fresh install stays in the "stopped" state and receives no broadcasts (BOOT_COMPLETED,
+# SettingsReceiver) until one of its components is launched once
+Invoke-Adb @("shell", "am", "start", "-W", "-n", "$PackageName/io.github.jqssun.airplay.MainActivity") | Out-Null
+
 # Ajustes iniciales vía SettingsReceiver (requiere android.permission.DUMP, concedido a adb shell)
 $settings = @(
     @("auto_start", "true"),
