@@ -28,9 +28,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
-import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.view.Surface
 import androidx.core.app.NotificationCompat
@@ -39,7 +36,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.os.ConfigurationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
-import androidx.media.app.NotificationCompat as MediaNotificationCompat
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaStyleNotificationHelper
 import io.github.jqssun.airplay.MainActivity
 import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.R
@@ -199,7 +197,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private set
     private val _mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var _coverArtBytes: ByteArray? = null
-    private var mediaSession: MediaSessionCompat? = null
+    private var mediaSession: MediaSession? = null
+    private lateinit var sessionPlayer: SessionPlayer
     private var mediaReceiver: BroadcastReceiver? = null
     private var volumeReceiver: BroadcastReceiver? = null
     @Volatile private var _syncClientVol = Prefs.SYNC_CLIENT_VOLUME.def
@@ -260,44 +259,28 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             positionMs = ::currentPositionMs,
             setPlaying = ::_setPlaying,
         )
-        mediaSession = MediaSessionCompat(this, "AirPlay").apply {
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() {
-                    if (_videoPlaybackActive.value) {
-                        airPlayVideoPlayer.setPlaying(true)
-                        return
-                    }
-                    _setPlaying(true)
-                    dacpController?.play()
+        sessionPlayer = SessionPlayer(mainLooper, VIDEO_SEEK_STEP_MS, ::_sessionSnapshot, object : SessionPlayer.Controls {
+            override fun setPlaying(playing: Boolean) {
+                if (_videoPlaybackActive.value) {
+                    airPlayVideoPlayer.setPlaying(playing)
+                    return
                 }
-                override fun onPause() {
-                    if (_videoPlaybackActive.value) {
-                        airPlayVideoPlayer.setPlaying(false)
-                        return
-                    }
-                    _setPlaying(false)
-                    dacpController?.pause()
-                }
-                override fun onStop() {
-                    if (_videoPlaybackActive.value) stopVideoPlayback()
-                }
-                override fun onFastForward() {
-                    if (_videoPlaybackActive.value) airPlayVideoPlayer.seekBy(VIDEO_SEEK_STEP_MS)
-                }
-                override fun onRewind() {
-                    if (_videoPlaybackActive.value) airPlayVideoPlayer.seekBy(-VIDEO_SEEK_STEP_MS)
-                }
-                override fun onSeekTo(pos: Long) {
-                    if (_videoPlaybackActive.value) airPlayVideoPlayer.scrub(pos / 1000f)
-                }
-                override fun onSkipToNext() {
-                    if (!_videoPlaybackActive.value) dacpController?.nextItem()
-                }
-                override fun onSkipToPrevious() {
-                    if (!_videoPlaybackActive.value) dacpController?.prevItem()
-                }
-            })
-        }
+                _setPlaying(playing)
+                dacpController?.let { if (playing) it.play() else it.pause() }
+            }
+            override fun stop() {
+                if (_videoPlaybackActive.value) stopVideoPlayback()
+            }
+            override fun seekTo(positionMs: Long) {
+                if (_videoPlaybackActive.value) airPlayVideoPlayer.scrub(positionMs / 1000f)
+            }
+            override fun next() {
+                if (!_videoPlaybackActive.value) dacpController?.nextItem()
+            }
+            override fun previous() {
+                if (!_videoPlaybackActive.value) dacpController?.prevItem()
+            }
+        })
         mediaReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 when (intent.action) {
@@ -604,7 +587,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         wakeLock = null
         videoRenderer.release()
         airPlayVideoPlayer.stop()
-        mediaSession?.isActive = false
+        _setSessionActive(false)
         _audioOnly.value = false
         _videoPlaybackActive.value = false
         _mirroringActive.value = false
@@ -676,7 +659,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPollSuppressed = true
         _videoPlaybackActive.value = false
         airPlayVideoPlayer.stop()
-        if (!_audioOnly.value) mediaSession?.isActive = false
+        if (!_audioOnly.value) _setSessionActive(false)
         log(message)
     }
 
@@ -697,6 +680,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         dacpController = null
         mediaSession?.release()
         mediaSession = null
+        sessionPlayer.release()
         super.onDestroy()
     }
 
@@ -721,7 +705,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackActive.value = true
         airPlayVideoPlayer.play(location, startPositionSeconds)
         // claim media-button routing for keys that arrive as media-session events
-        mediaSession?.isActive = true
+        _setSessionActive(true)
         log("AirPlay Video play: $location @ ${startPositionSeconds}s")
     }
 
@@ -883,7 +867,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 }
                 _applyClientVol()
             }
-            mediaSession?.isActive = false
+            _setSessionActive(false)
             _refreshDacpPlayer()
             _updateMediaNotification()
         }
@@ -956,10 +940,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _audioOnly.value = audioOnly
         _refreshDacpPlayer()
         if (audioOnly && !prev) {
-            mediaSession?.isActive = true
+            _setSessionActive(true)
             log("Audio mode")
         } else if (!audioOnly && prev) {
-            mediaSession?.isActive = false
+            _setSessionActive(false)
             _coverArtBytes = null
             _trackInfo.value = TrackInfo()
             _positionMs.value = 0
@@ -970,14 +954,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _updateMediaMetadata() {
-        val info = _trackInfo.value
-        val builder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, info.title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, info.artist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, info.album)
-            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, _durationMs.value)
-        info.coverArt?.let { builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) }
-        mediaSession?.setMetadata(builder.build())
+        _refreshSession()
         _updateMediaNotification()
     }
 
@@ -1005,26 +982,12 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private fun _updatePlaybackState() {
         // the sender's silent raop audio session must not overwrite video session state
         if (_videoPlaybackActive.value) return
-        val isPlaying = _playing.value
-        val pbState = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
-        val speed = if (isPlaying) 1f else 0f
-        val state = PlaybackStateCompat.Builder()
-            .setActions(
-                PlaybackStateCompat.ACTION_PLAY or
-                    PlaybackStateCompat.ACTION_PAUSE or
-                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-            )
-            .setState(pbState, _positionMs.value, speed, SystemClock.elapsedRealtime())
-            .build()
-        mediaSession?.setPlaybackState(state)
+        _refreshSession()
         _updateMediaNotification()
     }
 
     // consumers extrapolate position from (position, speed, updateTime): push only discontinuities
     private fun _updateVideoPlaybackState(positionSeconds: Float, rate: Float) {
-        val playing = rate > 0f
         val posMs = (positionSeconds * 1000).toLong()
         val now = SystemClock.elapsedRealtime()
         val expectedMs = _lastVideoStatePosMs +
@@ -1033,24 +996,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _lastVideoStateRate = rate
         _lastVideoStatePosMs = posMs
         _lastVideoStateAtMs = now
-        val state = PlaybackStateCompat.Builder()
-            .setActions(
-                PlaybackStateCompat.ACTION_PLAY or
-                    PlaybackStateCompat.ACTION_PAUSE or
-                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                    PlaybackStateCompat.ACTION_STOP or
-                    PlaybackStateCompat.ACTION_FAST_FORWARD or
-                    PlaybackStateCompat.ACTION_REWIND or
-                    PlaybackStateCompat.ACTION_SEEK_TO
-            )
-            .setState(
-                if (playing) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
-                posMs,
-                rate,
-                now
-            )
-            .build()
-        mediaSession?.setPlaybackState(state)
+        _refreshSession()
     }
 
     private var _lastVideoStateRate = -1f
@@ -1059,6 +1005,50 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private fun _refreshDacpPlayer() {
         _mainHandler.post { dacpPlayer.refresh() }
+    }
+
+    private fun _refreshSession() {
+        _mainHandler.post { if (::sessionPlayer.isInitialized) sessionPlayer.refresh() }
+    }
+
+    // a live session claims media-button routing, so it exists only while audio or video plays
+    private fun _setSessionActive(active: Boolean) {
+        _mainHandler.post {
+            if (active && mediaSession == null) {
+                mediaSession = MediaSession.Builder(this, sessionPlayer).setId(SESSION_ID).build()
+            } else if (!active) {
+                mediaSession?.release()
+                mediaSession = null
+            }
+            sessionPlayer.refresh()
+            _updateMediaNotification()
+        }
+    }
+
+    private fun _sessionSnapshot(): SessionPlayer.Snapshot {
+        if (_videoPlaybackActive.value) {
+            val info = _videoPlaybackInfo.value
+            return SessionPlayer.Snapshot(
+                mode = SessionPlayer.Mode.VIDEO,
+                title = _videoTitle.value.ifEmpty { _trackInfo.value.title },
+                durationMs = info.durationMs,
+                positionMs = info.positionMs,
+                playing = info.playing,
+                speed = info.speed,
+            )
+        }
+        if (!_audioOnly.value || _connectionCount.value == 0) return SessionPlayer.Snapshot(SessionPlayer.Mode.IDLE)
+        val track = _trackInfo.value
+        return SessionPlayer.Snapshot(
+            mode = SessionPlayer.Mode.AUDIO,
+            title = track.title,
+            artist = track.artist,
+            album = track.album,
+            artworkData = _coverArtBytes,
+            durationMs = _durationMs.value,
+            positionMs = currentPositionMs(),
+            playing = _playing.value,
+        )
     }
 
     private fun clearPin() {
@@ -1187,10 +1177,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         if (isAudio) {
             builder.setContentTitle(info.title).setContentText(info.artist).setSubText(info.album)
             info.coverArt?.let { builder.setLargeIcon(it) }
-            mediaSession?.sessionToken?.let { token ->
+            mediaSession?.let { session ->
                 builder.setStyle(
-                    MediaNotificationCompat.MediaStyle()
-                        .setMediaSession(token)
+                    MediaStyleNotificationHelper.MediaStyle(session)
                         .setShowActionsInCompactView(0, 1, 2)
                 )
                 // transport action buttons
@@ -1311,6 +1300,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         const val ACTION_START_SERVER = "io.github.jqssun.airplay.START_SERVER"
         // shared with dpad/double-tap seeks
         const val VIDEO_SEEK_STEP_MS = 10_000L
+        private const val SESSION_ID = "AirPlay"
         const val VIDEO_POLL_PENDING_TIMEOUT_MS = 3_000L
 
         private const val AUDIO_CONFIG_DEBOUNCE_MS = 500L
