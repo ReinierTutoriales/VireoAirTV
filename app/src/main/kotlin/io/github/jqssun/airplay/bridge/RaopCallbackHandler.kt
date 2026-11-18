@@ -1,7 +1,10 @@
 package io.github.jqssun.airplay.bridge
 
+import java.nio.ByteBuffer
+
 interface RaopCallbackHandler {
-    fun onVideoData(data: ByteArray, ntpTimeNs: Long, isH265: Boolean)
+    // data is a native buffer reused for every frame: valid only during this call, bytes [0, size)
+    fun onVideoData(data: ByteBuffer, size: Int, ntpTimeNs: Long, isH265: Boolean)
     fun onAudioFormat(ct: Int, spf: Int, usingScreen: Boolean)
     fun onVideoSize(srcW: Float, srcH: Float, w: Float, h: Float)
     // airplay volume in dB: -30..0, -144 = mute
