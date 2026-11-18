@@ -143,6 +143,43 @@ DLNA.
   está decodificado. Latencia en TV: pendiente de validación física (medir con `benchmarkLog`).
 - Descartado: los `printf` de playfair ya están anulados con `#define printf(...)`; no cuestan nada.
 
+## Séptima pasada: issues abiertos (2026-11-18, rama `develop`)
+Revisados los 26 issues abiertos de FDH2/UxPlay y los 18 de jqssun/android-airplay-server contra nuestro código.
+
+Arreglado:
+- Cliente que desaparece (UxPlay #638): `conn_feedback` no hacía nada y `onConnectionReset` solo
+  registraba. Ahora el latido `/feedback` llega al servicio; con 15 s sin él (el `-reset` de UxPlay) o
+  con un reset del socket de mirroring, el servidor se reinicia en el hilo principal. No se aplica a
+  clientes que nunca enviaron `/feedback` ni durante vídeo HLS.
+- RTSP FLUSH (pausa y salto): `_audio_flush` no hacía nada y el audio del buffer sonaba después de la
+  pausa. Test `timeline_flush.cpp`.
+- HLS (jqssun #79): parche 0050 (master con query string) y 0051 (master con URIs relativas devolvía un
+  buffer sin rellenar). Test `hls_master_playlist.c`.
+- HLS, encontrados en la revisión: parche 0048 (`playlistRemove` sin uuid llegaba a `strcmp(NULL)`),
+  0049 (el vídeo largo número 11 de una sesión escribía `airplay_video[-1]`), 0052 (comprobación de
+  puntero equivocada tras `calloc`).
+- jqssun #84: una pausa desde la TV ya no se deshace por los informes de progreso del emisor.
+- jqssun #92: los lanzamientos del servicio encienden la pantalla (`setTurnScreenOn`), y con HDMI-CEC la TV.
+
+Ya resuelto en nuestro pin: UxPlay #545 (comprobación de `airplay_video` NULL).
+
+No aplica: UxPlay #539 (nuestro motor de audio re-ancla en huecos de más de 750 ms), #550, #611, #606,
+#578, #328, #331, #358, #436, #448, #450, #462, #465, #480, #522, #529 (GStreamer, X11, Pi, Windows,
+grabación MP4), #582, #594 (organización del proyecto). #328 confirma que hay apps que envían 0 fps con
+la pantalla quieta, el caso que arregla el hilo `VideoDrain`.
+
+Pendiente, con motivo:
+- UxPlay #629 `playlistInsert` (VK Video): requiere eventos inversos `POST /event`; trabajo grande.
+- UxPlay #601 (doblaje de YouTube desde Safari): las variantes solo se distinguen por atributos privados
+  `YT-EXT-*`; requiere filtrar el master antes de ExoPlayer.
+- UxPlay #596 (HLS tras re-emparejar), #514 (reenvíos de audio): sin reproducción en host.
+- UxPlay #535 (iOS 27): upstream lo da por resuelto. Vigilar: si el autotest HEVC falla no anunciamos
+  H.265 y algunas betas de iOS 27 enviaban HEVC igualmente.
+- jqssun #87 (Realtek, pantalla negra), #89 (colores), #91 (cierre en Android 12 con 2 GB), #82 y #72
+  (sincronía y tirones), #50 (SELinux `/dev/ashmem`): dependen del dispositivo, sin registros nuestros.
+- jqssun #73 (TikTok), #44 (`ANNOUNCE` de PipeWire), #42 (Music Assistant/TuneBlade), #61 (perfil de
+  color), #90 (confirmar conexiones), #93 (límite de 8 Mbit/s de macOS, ajuste del emisor), #26, #65, #83.
+
 ## Verificado
 `assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
 `scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.
