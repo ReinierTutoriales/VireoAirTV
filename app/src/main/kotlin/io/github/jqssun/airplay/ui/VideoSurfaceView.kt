@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.ui
 
+import android.os.Build
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -22,11 +23,14 @@ fun VideoSurfaceView(
     // buffer size for producers that draw at window size (the mirroring GL blit): the compositor
     // then scales source pixels once to the panel instead of after a GL resample to the view size
     bufferSize: Pair<Int, Int>? = null,
+    // content frame rate hint for the display mode (Surface.setFrameRate); 0 = no preference
+    frameRate: Float = 0f,
 ) {
     val state = remember { SurfaceState() }
     val callbacks = remember {
         object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
+                state.applyFrameRate(holder)
                 onSurfaceAvailable(holder.surface)
             }
             override fun surfaceChanged(holder: SurfaceHolder, fmt: Int, w: Int, h: Int) {
@@ -50,6 +54,10 @@ fun VideoSurfaceView(
                 if (bufferSize != null) view.holder.setFixedSize(bufferSize.first, bufferSize.second)
                 else view.holder.setSizeFromLayout()
             }
+            if (state.frameRate != frameRate) {
+                state.frameRate = frameRate
+                state.applyFrameRate(view.holder)
+            }
         },
         modifier = if (applyAspectRatio) {
             modifier
@@ -63,4 +71,17 @@ fun VideoSurfaceView(
 
 private class SurfaceState {
     var bufferSize: Pair<Int, Int>? = null
+    var frameRate = 0f
+
+    // same call as moonlight-android (Game.surfaceChanged): fixed-source content, switch even if not seamless
+    fun applyFrameRate(holder: SurfaceHolder) {
+        val surface = holder.surface
+        if (surface == null || !surface.isValid) return
+        when {
+            Build.VERSION.SDK_INT >= 31 -> surface.setFrameRate(
+                frameRate, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ALWAYS
+            )
+            Build.VERSION.SDK_INT >= 30 -> surface.setFrameRate(frameRate, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)
+        }
+    }
 }

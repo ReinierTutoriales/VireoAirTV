@@ -111,11 +111,13 @@ fun MainScreen(
     val video: @Composable () -> Unit = {
         val aspect by viewModel.videoAspect.collectAsState()
         val mirrorSize by viewModel.mirrorSize.collectAsState()
+        val maxFps by viewModel.pref(Prefs.MAX_FPS).collectAsState()
         VideoSurfaceView(
             onSurfaceAvailable = onSurfaceAvailable,
             onSurfaceDestroyed = onSurfaceDestroyed,
             aspectRatio = aspect,
-            bufferSize = mirrorSize
+            bufferSize = mirrorSize,
+            frameRate = if (mirrorSize != null) maxFps.toFloat() else 0f
         )
     }
 
