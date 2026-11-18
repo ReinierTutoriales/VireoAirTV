@@ -19,6 +19,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -1171,12 +1173,18 @@ private fun NowPlayingContent(
                                     .fillMaxHeight(if (fullscreen) 0.78f else 0.88f)
                                     .aspectRatio(1f, matchHeightConstraintsFirst = true)
                             )
-                            Column(
+                            // centred when it fits; the Overview card can be shorter than text, progress,
+                            // transport and both volume rows, so the column scrolls instead of being cut off
+                            Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .widthIn(max = 560.dp),
-                                horizontalAlignment = Alignment.Start,
-                                verticalArrangement = Arrangement.Center
+                                    .widthIn(max = 560.dp)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                            Column(
+                                modifier = Modifier.verticalScroll(rememberScrollState()),
+                                horizontalAlignment = Alignment.Start
                             ) {
                                 NowPlayingTrackText(track = track, fullscreen = fullscreen, centered = false)
                                 if (player != null) {
@@ -1197,6 +1205,7 @@ private fun NowPlayingContent(
                                         }
                                     }
                                 }
+                            }
                             }
                         }
                     } else {
