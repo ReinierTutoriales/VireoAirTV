@@ -47,3 +47,15 @@ Fecha: 2026-11-16 · Commit base: `a46cca0` (v0.0.36)
 | 6. Dispositivos de confianza | Pendiente: decisión de producto |
 
 Otros cambios verificados: dependencias y toolchain a la última estable, sesión multimedia migrada a Media3, `DmapParser` con límite de profundidad (entrada de red), DACP con `ServiceInfoCallback` en API 34+, lint en 0 errores con pruebas JVM en CI. Todo pendiente de validación física en TV.
+
+## Latencia y robustez (2026-11-17, después de 0.0.1)
+| Cambio | Motivo verificado en código |
+|---|---|
+| Hilo `VideoDrain` para la salida del decodificador | La salida solo se drenaba al llegar el siguiente paquete: cada fotograma esperaba un intervalo de entrada |
+| `eglSwapInterval(0)` en el blit GL | `eglSwapBuffers` bloqueaba hasta el vsync |
+| Búfer directo reutilizable para mirroring (JNI) | Un `byte[]` nuevo por fotograma presionaba al recolector de ART |
+| Carátulas a 720 px como máximo | Una carátula de 3000 px ocupaba ~36 MB |
+| Guardas `NewByteArray` nulo, URL DACP IPv6, orden carga/escritura de logs, scroll de logs | Defectos puntuales |
+
+Sin medir todavía en TV: latencia extremo a extremo, FPS y caídas (overlay de diagnóstico y `benchmark_log`). Los valores por defecto de audio (`low_latency`, búfer adaptativo) y `scheduled_output_buffer_release` no se cambian sin esa medición. Se mantiene la lista de decodificadores por modelo de `DecoderSelector`, heredada de moonlight-android para evitar decodificadores HEVC defectuosos.
+
