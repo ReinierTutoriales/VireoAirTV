@@ -84,6 +84,8 @@ data class VideoPlaybackInfo(
     val buffering: Boolean = false,
 )
 
+// debounce is FlowPreview; used for settings, audio config and LAN address changes
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private var nativeHandle = 0L

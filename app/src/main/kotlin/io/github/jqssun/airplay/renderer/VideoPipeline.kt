@@ -11,12 +11,15 @@ import android.view.Surface
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 // decodes into an app-owned SurfaceTexture that outlives display surface
 // gl thread blits it to any surface attached, so fullscreen toggles re-point display without restarting codec
 class VideoPipeline {
 
-    private val lock = Object()
+    private val lock = ReentrantLock()
+    private val changed = lock.newCondition()
     private var thread: Thread? = null
     @Volatile private var running = false
 
@@ -42,17 +45,17 @@ class VideoPipeline {
     @Volatile private var videoW = 0
     @Volatile private var videoH = 0
 
-    fun start() = synchronized(lock) {
-        if (running) return@synchronized
+    fun start() = lock.withLock {
+        if (running) return@withLock
         running = true
         thread = Thread({ _loop() }, "VideoPipeline").also { it.start() }
-        while (inputSurface == null && running) lock.wait()
+        while (inputSurface == null && running) changed.await()
     }
 
-    fun setDisplaySurface(surface: Surface?) = synchronized(lock) {
+    fun setDisplaySurface(surface: Surface?) = lock.withLock {
         pendingDisplay = surface
         displayDirty = true
-        lock.notifyAll()
+        changed.signalAll()
     }
 
     fun setVideoSize(w: Int, h: Int) {
@@ -62,10 +65,10 @@ class VideoPipeline {
     }
 
     fun release() {
-        synchronized(lock) {
+        lock.withLock {
             if (!running) return
             running = false
-            lock.notifyAll()
+            changed.signalAll()
         }
         thread?.join()
         thread = null
@@ -77,20 +80,20 @@ class VideoPipeline {
             _initGl()
         } catch (e: Exception) {
             Log.e(TAG, "GL init failed", e)
-            synchronized(lock) { running = false; lock.notifyAll() }
+            lock.withLock { running = false; changed.signalAll() }
             return
         }
         Matrix.setIdentityM(texMatrix, 0)
-        synchronized(lock) {
+        lock.withLock {
             inputSurface = Surface(surfaceTexture)
-            lock.notifyAll()
+            changed.signalAll()
         }
         while (true) {
             var newDisplay: Surface? = null
             var displayChanged = false
             var doFrame = false
-            synchronized(lock) {
-                while (running && !frameAvailable && !displayDirty) lock.wait()
+            lock.withLock {
+                while (running && !frameAvailable && !displayDirty) changed.await()
                 if (running && displayDirty) {
                     newDisplay = pendingDisplay
                     displayChanged = true
@@ -178,7 +181,7 @@ class VideoPipeline {
         surfaceTexture = SurfaceTexture(oesTex).also {
             if (videoW > 0 && videoH > 0) it.setDefaultBufferSize(videoW, videoH)
             it.setOnFrameAvailableListener {
-                synchronized(lock) { frameAvailable = true; lock.notifyAll() }
+                lock.withLock { frameAvailable = true; changed.signalAll() }
             }
         }
     }

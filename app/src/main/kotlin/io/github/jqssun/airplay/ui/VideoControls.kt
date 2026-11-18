@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.ui
 
+import android.content.ClipData
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
@@ -65,6 +66,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,13 +87,13 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -102,6 +104,7 @@ import io.github.jqssun.airplay.viewmodel.MainViewModel
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 // white content, strong white ripple; long-press detected via interactions
 @OptIn(ExperimentalMaterial3Api::class)
@@ -215,8 +218,11 @@ fun VideoControlsTop(
                 Icon(Icons.Rounded.Speed, contentDescription = stringResource(R.string.select_playback_speed))
             }
             if (videoUrl != null) {
-                val clipboard = LocalClipboardManager.current
-                PlayerButton(onClick = { clipboard.setText(AnnotatedString(videoUrl)) }) {
+                val clipboard = LocalClipboard.current
+                val scope = rememberCoroutineScope()
+                PlayerButton(onClick = {
+                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(videoUrl, videoUrl))) }
+                }) {
                     Icon(Icons.Rounded.ContentCopy, contentDescription = stringResource(R.string.cd_copy_url))
                 }
             }

@@ -3,10 +3,13 @@ package io.github.jqssun.airplay.audio
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
+import androidx.annotation.RequiresApi
 import android.util.Log
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import java.io.IOException
+import java.net.Inet4Address
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -24,6 +27,8 @@ class DacpController(ctx: Context) {
     @Volatile var activeRemote = ""
     @Volatile private var host = ""
     @Volatile private var port = 0
+    // NsdManager.ServiceInfoCallback on API 34+; typed Any so older runtimes never resolve the class
+    private var infoCallback: Any? = null
 
     val ready: Boolean get() = host.isNotEmpty() && activeRemote.isNotEmpty()
 
@@ -44,6 +49,7 @@ class DacpController(ctx: Context) {
     fun playResume() = _send("/ctrl-int/1/playresume")
 
     fun reset() {
+        _stopTracking()
         dacpId = ""
         activeRemote = ""
         host = ""
@@ -56,25 +62,58 @@ class DacpController(ctx: Context) {
     }
 
     private fun _resolve() {
+        _stopTracking()
         if (dacpId.isEmpty()) return
-        val serviceName = "iTunes_Ctrl_$dacpId"
         val info = NsdServiceInfo().apply {
             serviceType = "_dacp._tcp"
-            this.serviceName = serviceName
+            serviceName = "iTunes_Ctrl_$dacpId"
         }
         try {
-            nsdManager.resolveService(info, object : NsdManager.ResolveListener {
-                override fun onResolveFailed(si: NsdServiceInfo, code: Int) {
-                    Log.w(TAG, "DACP resolve failed: $code")
-                }
-                override fun onServiceResolved(si: NsdServiceInfo) {
-                    host = si.host.hostAddress ?: return
-                    port = si.port
-                    Log.i(TAG, "DACP resolved: $host:$port")
-                }
-            })
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) _track(info) else _resolveLegacy(info)
         } catch (e: Exception) {
             Log.w(TAG, "DACP resolve error", e)
+        }
+    }
+
+    // API 34+: keeps following the sender, so an address change does not strand DACP
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private fun _track(info: NsdServiceInfo) {
+        val callback = object : NsdManager.ServiceInfoCallback {
+            override fun onServiceInfoCallbackRegistrationFailed(code: Int) {
+                Log.w(TAG, "DACP resolve failed: $code")
+            }
+            override fun onServiceUpdated(si: NsdServiceInfo) {
+                val addr = si.hostAddresses.firstOrNull { it is Inet4Address } ?: si.hostAddresses.firstOrNull()
+                host = addr?.hostAddress ?: return
+                port = si.port
+                Log.i(TAG, "DACP resolved: $host:$port")
+            }
+            override fun onServiceLost() {}
+            override fun onServiceInfoCallbackUnregistered() {}
+        }
+        nsdManager.registerServiceInfoCallback(info, Runnable::run, callback)
+        infoCallback = callback
+    }
+
+    @Suppress("DEPRECATION")
+    private fun _resolveLegacy(info: NsdServiceInfo) {
+        nsdManager.resolveService(info, object : NsdManager.ResolveListener {
+            override fun onResolveFailed(si: NsdServiceInfo, code: Int) {
+                Log.w(TAG, "DACP resolve failed: $code")
+            }
+            override fun onServiceResolved(si: NsdServiceInfo) {
+                host = si.host.hostAddress ?: return
+                port = si.port
+                Log.i(TAG, "DACP resolved: $host:$port")
+            }
+        })
+    }
+
+    private fun _stopTracking() {
+        val callback = infoCallback ?: return
+        infoCallback = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            try { nsdManager.unregisterServiceInfoCallback(callback as NsdManager.ServiceInfoCallback) } catch (_: Exception) {}
         }
     }
 
