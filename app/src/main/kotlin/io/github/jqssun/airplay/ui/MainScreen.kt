@@ -968,17 +968,53 @@ private fun HoldScanButton(
     onEnd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentBegin by rememberUpdatedState(onBegin)
+    val currentEnd by rememberUpdatedState(onEnd)
+    var keyScanning by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        onDispose { if (keyScanning) currentEnd() }
+    }
     Box(
         modifier = modifier
             .size(48.dp)
+            .dpadFocus(CircleShape)
             .clip(CircleShape)
+            .onPreviewKeyEvent { e ->
+                when (e.key) {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when (e.type) {
+                        KeyEventType.KeyDown -> {
+                            if (!keyScanning) {
+                                keyScanning = true
+                                currentBegin()
+                            }
+                            true
+                        }
+                        KeyEventType.KeyUp -> {
+                            if (keyScanning) {
+                                keyScanning = false
+                                currentEnd()
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                    else -> false
+                }
+            }
+            .onFocusChanged {
+                if (!it.isFocused && keyScanning) {
+                    keyScanning = false
+                    currentEnd()
+                }
+            }
+            .focusable()
             .pointerInput(Unit) {
                 detectTapGestures(onPress = {
-                    onBegin()
+                    currentBegin()
                     try {
                         awaitRelease()
                     } finally {
-                        onEnd()
+                        currentEnd()
                     }
                 })
             },
