@@ -24,6 +24,15 @@ if [[ -n "$APK_PATH" ]]; then
   run_adb install -r -g "$APK_PATH"
 fi
 
+# Runtime permissions, also when the APK was installed earlier without -g; granted before the first
+# launch so the TV shows no permission dialogs
+SDK=$(run_adb shell getprop ro.build.version.sdk | tr -d '\r')
+grant() {
+  run_adb shell pm grant "$PACKAGE_NAME" "$1" || echo "Warning: could not grant $1" >&2
+}
+if (( SDK >= 33 )); then grant android.permission.POST_NOTIFICATIONS; fi
+if (( SDK >= 37 )); then grant android.permission.ACCESS_LOCAL_NETWORK; fi
+
 # Permitir abrir la app al conectar y evitar restricciones de batería en TV
 run_adb shell appops set "$PACKAGE_NAME" SYSTEM_ALERT_WINDOW allow
 run_adb shell dumpsys deviceidle whitelist "+$PACKAGE_NAME"
@@ -56,5 +65,8 @@ set_setting launch_on_connect true
 if [[ -n "$SERVER_NAME" ]]; then
   set_setting server_name "$SERVER_NAME"
 fi
+
+# the receiver runs as a service; leave the TV on its home screen
+run_adb shell input keyevent KEYCODE_HOME
 
 echo "Provisioning completed for $PACKAGE_NAME"

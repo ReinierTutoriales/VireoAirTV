@@ -32,6 +32,17 @@ if ($ApkPath) {
     Invoke-Adb @("install", "-r", "-g", $ApkPath) | Out-Null
 }
 
+# Runtime permissions, also when the APK was installed earlier without -g; granted before the first
+# launch so the TV shows no permission dialogs
+$sdk = [int](Invoke-Adb @("shell", "getprop", "ro.build.version.sdk")).Trim()
+function Grant-Permission {
+    param([string]$Permission)
+    try { Invoke-Adb @("shell", "pm", "grant", $PackageName, $Permission) | Out-Null }
+    catch { Write-Warning "Could not grant ${Permission}: $_" }
+}
+if ($sdk -ge 33) { Grant-Permission "android.permission.POST_NOTIFICATIONS" }
+if ($sdk -ge 37) { Grant-Permission "android.permission.ACCESS_LOCAL_NETWORK" }
+
 # Permitir abrir la app al conectar y evitar restricciones de batería en TV
 Invoke-Adb @("shell", "appops", "set", $PackageName, "SYSTEM_ALERT_WINDOW", "allow") | Out-Null
 Invoke-Adb @("shell", "dumpsys", "deviceidle", "whitelist", "+$PackageName") | Out-Null
@@ -63,5 +74,8 @@ foreach ($pair in $settings) {
         throw "SettingsReceiver rejected $($pair[0])=$($pair[1]):`n$out"
     }
 }
+
+# the receiver runs as a service; leave the TV on its home screen
+Invoke-Adb @("shell", "input", "keyevent", "KEYCODE_HOME") | Out-Null
 
 Write-Host "Provisioning completed for $PackageName"
