@@ -6,7 +6,7 @@ description: Use when changing product logic, adding features, or fixing regress
 # Testing Discipline
 
 - Identify the changed behavior and run its focused check first; for functional fixes require a check that detects the old defect.
-- The repository currently has no unit-test source set. Adding one is part of the first functional change that needs it; do not report tests that do not exist.
+- JVM unit tests (JUnit 6) live in `app/src/test/`; run `./gradlew testDebugUnitTest`. Code that touches Android APIs needs a device or emulator check; do not report tests that do not exist.
 - Do not weaken existing checks. Record any unavailable check rather than treating it as passed.
 - For mirroring, audio, HLS video, latency, memory, boot start or remote input, name the physical TV check still needed; emulator runs and doubles do not validate hardware decoding or real network behavior.
 

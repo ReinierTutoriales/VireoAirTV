@@ -3,17 +3,18 @@
 ## Project
 AirPlay receiver for Android TV, independent of the VireoLumaTV browser. Derived from `jqssun/android-airplay-server` (GPL-3.0), which uses UxPlay (C) through JNI. See `docs/ARQUITECTURA.md` (target), `docs/AUDITORIA.md` (verified state and gaps) and `docs/UPSTREAM.md` (sync procedure).
 
-## Stack (verified at import, upstream a46cca0)
-- Kotlin + Jetpack Compose, Hilt, Media3/ExoPlayer (HLS), Oboe, MediaCodec.
-- Native: UxPlay, libplist, OpenSSL, FFmpeg (ALAC only) as Git submodules; CMake + NDK 27; JNI bridge in `app/src/main/cpp/`.
-- compileSdk/targetSdk 37, minSdk 23. ABIs: arm64-v8a, armeabi-v7a, x86_64. Module: `:app`.
+## Stack (versions live in `gradle/libs.versions.toml`)
+- Kotlin + Jetpack Compose, Hilt, Media3 (ExoPlayer HLS, MediaSession via `SessionPlayer`), Oboe, MediaCodec.
+- Native: UxPlay, libplist, OpenSSL, FFmpeg (ALAC only) as Git submodules; CMake + NDK 30; JNI bridge in `app/src/main/cpp/`.
+- compileSdk/targetSdk 37, minSdk 24. ABIs: arm64-v8a, armeabi-v7a, x86_64. Module: `:app`.
 
 ## Build
 ```bash
 git submodule update --init --recursive
-./gradlew assembleDebug        # sanitize build: ./gradlew assembleSanitize
+./gradlew assembleDebug testDebugUnitTest lintDebug   # add -PabiFilter=arm64-v8a for a one-ABI debug build
+./gradlew assembleSanitize                            # HWASan + UBSan, arm64
 ```
-The `applyUxplayPatches` task applies `app/src/main/cpp/patches/UxPlay/*.patch` before CMake configure. There is no unit-test source set yet.
+The `applyUxplayPatches` task applies `app/src/main/cpp/patches/UxPlay/*.patch` before CMake configure. Unit tests (JUnit 6) live in `app/src/test/`. CI (`build.yml`) runs build, tests and lint on every PR and push to `main`; lint must stay at 0 errors.
 
 ## Priorities
 - Stable, recoverable receiver on Android TV/Google TV: discovery, sessions, mirroring, audio and HLS video.

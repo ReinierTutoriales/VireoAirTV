@@ -5,8 +5,8 @@ Fecha: 2026-11-16 · Commit base: `a46cca0` (v0.0.36)
 ## Estado verificado
 - Mantenimiento activo (último commit upstream: 2026-10-19).
 - Motor: UxPlay 1.73.7 como submódulo + 9 parches en `app/src/main/cpp/patches/UxPlay/`.
-- Dependencias nativas: OpenSSL, libplist, FFmpeg (solo ALAC). CMake + NDK 27.
-- compileSdk/targetSdk 37, minSdk 23. ABIs: arm64-v8a, armeabi-v7a, x86_64.
+- Dependencias nativas: OpenSSL, libplist, FFmpeg (solo ALAC). CMake + NDK 27 (NDK 30 desde 2026-11-17).
+- compileSdk/targetSdk 37, minSdk 23 (24 desde 2026-11-17). ABIs: arm64-v8a, armeabi-v7a, x86_64.
 - Variante `sanitize` (HWASan + UBSan) disponible.
 - Licencia GPL-3.0 (aplica a todo el APK y a cualquier distribución derivada).
 - Funciones: mirroring H.264/HEVC, AAC-ELD/LC/ALAC, vídeo HLS (ExoPlayer), metadatos y carátula, DACP, PIN opcional, D-pad, PiP, overlay de diagnóstico, ajustes por ADB (`SettingsReceiver`, protegido con `DUMP`), MAC estable persistida.
@@ -35,3 +35,15 @@ Fecha: 2026-11-16 · Commit base: `a46cca0` (v0.0.36)
 - Fase 2: script de provisionamiento ADB (permisos, batería, ajustes).
 - Fase 3 (solo firmware propio): misma APK como priv-app + `privapp-permissions` XML.
 - Proponer los parches upstream para no divergir.
+
+## Estado (2026-11-17)
+| Brecha | Estado |
+|---|---|
+| 1. `START_NOT_STICKY` | Resuelta (`a80f728`) |
+| 2. Sin `NetworkCallback` | Resuelta (`b098567`) |
+| 3. Sin reintento NSD | Resuelta (`7270103`) |
+| 4. "Abrir al conectar" sin overlay | Notificación con acción si falta `SYSTEM_ALERT_WINDOW` y scripts `scripts/provision.*` |
+| 5. Watchdog del motor nativo | Pendiente: requiere un cuelgue reproducido |
+| 6. Dispositivos de confianza | Pendiente: decisión de producto |
+
+Otros cambios verificados: dependencias y toolchain a la última estable, sesión multimedia migrada a Media3, `DmapParser` con límite de profundidad (entrada de red), DACP con `ServiceInfoCallback` en API 34+, lint en 0 errores con pruebas JVM en CI. Todo pendiente de validación física en TV.
