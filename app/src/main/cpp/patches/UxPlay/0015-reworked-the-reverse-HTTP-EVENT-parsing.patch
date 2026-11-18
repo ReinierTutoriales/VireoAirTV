@@ -1,0 +1,616 @@
+From 03c3c5466bf1bda7184d3fec4d525ec7c0586043 Mon Sep 17 00:00:00 2001
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Wed, 21 Oct 2026 01:10:36 -0400
+Subject: [PATCH 15/29] reworked the reverse-HTTP (EVENT) parsing
+
+PTTH connections renamed EVENT connections.
+EVENT/1.0 is an Apple one-way protocol that
+sends messages from the client that can be
+(optionally) acted on by the server, but
+need no response.  Both reverse HTTP responses
+and EVENT messages are now correctly parsed.
+
+(cherry picked from commit 3fda79005f7be2da2faff36d206b9a509aa11e00)
+---
+ lib/fcup_request.h  |   2 +-
+ lib/http_handlers.h |   8 +-
+ lib/http_request.c  | 144 ++++++++++++++++++++++++++++++-----
+ lib/http_request.h  |   5 +-
+ lib/httpd.c         | 181 +++++++++++++++++++++-----------------------
+ lib/httpd.h         |   2 +-
+ lib/raop.c          |   2 +-
+ 7 files changed, 223 insertions(+), 121 deletions(-)
+
+diff --git a/lib/fcup_request.h b/lib/fcup_request.h
+index bbb2e75..b91e78d 100644
+--- a/lib/fcup_request.h
++++ b/lib/fcup_request.h
+@@ -74,7 +74,7 @@ int fcup_request(void *conn_opaque, const char *media_url, const char *client_se
+     int datalen = 0;
+     int requestlen = 0;
+ 
+-    int socket_fd = httpd_get_connection_socket_by_type(raop->httpd, CONNECTION_TYPE_PTTH, 1);
++    int socket_fd = httpd_get_connection_socket_by_type(raop->httpd, CONNECTION_TYPE_EVENT, 1);
+     
+     logger_log(raop->logger, LOGGER_DEBUG, "fcup_request send socket = %d", socket_fd);
+     
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index 586f61e..e98c19a 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -424,7 +424,7 @@ http_handler_playback_info(raop_conn_t *conn, http_request_t *request, http_resp
+           https://datatracker.ietf.org/doc/id/draft-lentczner-rhttp-00.txt .  
+ 
+    After the Upgrade the channel becomes a reverse http "AirPlay (reversed)" channel for
+-   http requests from Server to Client.
++   http requests from Server to Client, with connection type CONNECTION_TYPE_EVENT
+   */
+ 
+ static void
+@@ -445,8 +445,8 @@ http_handler_reverse(raop_conn_t *conn, http_request_t *request, http_response_t
+     logger_log(raop->logger, LOGGER_INFO, "client requested reverse connection: %s; purpose: %s  \"%s\"",
+                connection, upgrade, purpose);
+ 
+-    httpd_set_connection_type(raop->httpd, (void *) conn, CONNECTION_TYPE_PTTH);
+-    int type_PTTH = httpd_count_connection_type(raop->httpd, CONNECTION_TYPE_PTTH);
++    httpd_set_connection_type(raop->httpd, (void *) conn, CONNECTION_TYPE_EVENT);
++    int type_PTTH = httpd_count_connection_type(raop->httpd, CONNECTION_TYPE_EVENT);
+ 
+     if (type_PTTH == 1) {
+         logger_log(raop->logger, LOGGER_DEBUG, "will use socket %d for %s connections", socket_fd, purpose);
+@@ -454,7 +454,7 @@ http_handler_reverse(raop_conn_t *conn, http_request_t *request, http_response_t
+         http_response_add_header(response, "Connection", "Upgrade");
+         http_response_add_header(response, "Upgrade", "PTTH/1.0");
+     } else {
+-        logger_log(raop->logger, LOGGER_ERR, "multiple TPPH connections (%d) are forbidden", type_PTTH );
++        logger_log(raop->logger, LOGGER_ERR, "multiple EVENT (PTTH) connections (%d) are forbidden", type_PTTH );
+     }    
+ }
+ 
+diff --git a/lib/http_request.c b/lib/http_request.c
+index 585cb38..eb444f3 100644
+--- a/lib/http_request.c
++++ b/lib/http_request.c
+@@ -23,10 +23,11 @@
+ #include "http_request.h"
+ #include "llhttp/llhttp.h"
+ 
++#define MAX_EVENT_DATA 4096
++
+ struct http_request_s {
+     llhttp_t parser;
+     llhttp_settings_t parser_settings;
+-
+     bool is_reverse;  // if true, this is a reverse-response from client
+     const char *method;
+     char *url;
+@@ -39,8 +40,7 @@ struct http_request_s {
+     int headers_index;
+ 
+     char *data;
+-    int datalen;
+-
++    size_t datalen;
+     int complete;
+ };
+ 
+@@ -226,20 +226,9 @@ http_request_init(void)
+ 
+     llhttp_init(&request->parser, HTTP_REQUEST, &request->parser_settings);
+     request->parser.data = request;
+-	request->url = NULL;
+-	request->url_len = 0;
+-	request->protocol_len = 0;
+-	request->version_len = 0;
+-	request->headers = NULL;
+-	request->headers_index = 0;
+-	request->headers_size = 0;
+-	request->data = NULL;
+-	request->datalen = 0;
+-	request->complete = 0;
+-    request->is_reverse = false;
+     assert(sizeof(request->protocol) > 8);
+-    memset(request->protocol, '\0', sizeof(request->protocol)); 
+     request->protocol[4] = '/';
++    request->data = NULL;
+     return request;
+ }
+ 
+@@ -262,13 +251,57 @@ http_request_destroy(http_request_t *request)
+     }
+ }
+ 
+-int
+-http_request_add_data(http_request_t *request, const char *data, int datalen)
++static size_t
++parse_ptth(const char *data, const size_t datalen, size_t *header_len, size_t *body_len)
+ {
+-    if (!request) {
+-        return -1;
++    *header_len = 0;
++    *body_len = 0;
++
++    //  Fast-forward past any leading junk or whitespace at the front of the pipe
++    size_t junk_offset = 0;
++    while (junk_offset < datalen && (data[junk_offset] <= 32 || data[junk_offset] == '\x7f')) {
++        junk_offset++;
++    }
++
++    // Adjust parsing frame past the junk
++    const char *actual_data = data + junk_offset;
++    size_t actual_datalen = datalen - junk_offset;
++
++    const char *header_end = strstr(actual_data, "\r\n\r\n");
++    if (!header_end) {
++        return 0; // incomplete headers
++    }
++
++    size_t hl = (header_end - actual_data) + 4;
++    size_t bl = 0;
++
++    const char *cl_ptr = NULL;
++    for (size_t i = 0; i < hl - 15; i++) {
++        if (strncasecmp(actual_data + i, "Content-Length:", 15) == 0) {
++            cl_ptr = actual_data + i;
++            break;
++        }
++    }
++
++    if (cl_ptr) {
++        bl = (size_t) strtoul(cl_ptr + 15, NULL, 10);
+     }
+ 
++    size_t total_msg_len = hl + bl;
++    if (actual_datalen < total_msg_len) {
++        return 0; // incomplete body
++    }
++    
++    *header_len = hl;
++    *body_len = bl;
++
++    //  (downstream memmove flushes both message + junk)
++    return total_msg_len + junk_offset;
++}
++
++int
++http_request_add_data(http_request_t *request, const char *data, size_t datalen)
++{
+     int ret = llhttp_execute(&request->parser, data, datalen);
+     if (ret == HPE_PAUSED_UPGRADE) {
+         /* support for "Upgrade" to reverse http ("PTTH/1.0") protocol */
+@@ -277,6 +310,79 @@ http_request_add_data(http_request_t *request, const char *data, int datalen)
+     return ret;
+ }
+ 
++int
++http_request_add_event_data(http_request_t *request, const char *data, size_t datalen)
++{
++    if (request->datalen + datalen >= MAX_EVENT_DATA) {
++        return -1;
++    }
++    memcpy(request->data + request->datalen, data, datalen);
++    request->datalen += datalen;
++    request->data[request->datalen] = '\0';
++    return 0;
++}
++
++// any message returned by parse_event_data must be free'd
++bool http_request_parse_event_data(http_request_t *request, char **header_ptr, size_t *header_len, char **body_ptr, size_t *body_len) {
++    *header_len = 0;
++    *body_len = 0;
++    *header_ptr = NULL;
++    *body_ptr = NULL;
++
++    /* now attempt to parse the reverse-HTTP response, or EVENT message */
++    size_t message_len = parse_ptth(request->data, request->datalen, header_len, body_len);
++    if (!message_len) {
++        return false;
++    }
++    assert (request->datalen >= message_len);
++    assert (message_len == *header_len + *body_len);
++
++    char *local_header = (char *) malloc(*header_len + 1);
++    if (!local_header) return false;
++    
++    memcpy(local_header, request->data, *header_len);
++    local_header[*header_len] = '\0';
++
++    char *local_body = NULL;
++    if (*body_len) {
++        local_body = (char *) malloc(*body_len + 1);
++        if (!local_body) {
++            free(local_header);
++            return false;
++        }
++        memcpy(local_body, request->data + *header_len, *body_len);
++        local_body[*body_len] = '\0';
++    }
++
++    size_t remaining_len = request->datalen - message_len;    
++    if (remaining_len) {
++        memmove(request->data, request->data + message_len, remaining_len);
++    }
++    request->datalen = remaining_len;
++    request->data[request->datalen] = '\0'; 
++
++    *header_ptr = local_header;
++    *body_ptr = local_body;
++
++    return true;
++}
++
++int http_request_upgrade_data(http_request_t *request)
++{
++    if (request->data) {
++        free(request->data);
++        request->data = NULL;
++    }
++    size_t max_event_data = MAX_EVENT_DATA;
++    request->data = (char *) malloc (max_event_data);
++    if (!request->data) {
++        return -1;
++    }
++    request->data[0] = '\0';
++    request->datalen = 0;
++    return 0;
++}
++
+ int
+ http_request_is_complete(http_request_t *request)
+ {
+diff --git a/lib/http_request.h b/lib/http_request.h
+index 5308947..f3e3fab 100644
+--- a/lib/http_request.h
++++ b/lib/http_request.h
+@@ -21,7 +21,9 @@ typedef struct http_request_s http_request_t;
+ 
+ http_request_t *http_request_init(void);
+ 
+-int http_request_add_data(http_request_t *request, const char *data, int datalen);
++int http_request_add_data(http_request_t *request, const char *data, size_t datalen);
++int http_request_add_event_data(http_request_t *request, const char *data, size_t datalen);
++bool http_request_parse_event_data(http_request_t *request, char **header, size_t *header_len, char **body, size_t *body_len);
+ int http_request_is_complete(http_request_t *request);
+ int http_request_has_error(http_request_t *request);
+ 
+@@ -36,6 +38,7 @@ size_t http_request_header_get_size(http_request_t *request, int *fields, size_t
+ int http_request_get_header_string(http_request_t *request, char **header_str);
+ bool http_request_is_reverse(http_request_t *request);
+ void http_request_set_reverse(http_request_t *request);
++int http_request_upgrade_data(http_request_t *request);
+ 
+ void http_request_destroy(http_request_t *request);
+ 
+diff --git a/lib/httpd.c b/lib/httpd.c
+index bf6b0db..523b0ca 100644
+--- a/lib/httpd.c
++++ b/lib/httpd.c
+@@ -33,7 +33,7 @@ static const char *typename[] = {
+     [CONNECTION_TYPE_UNKNOWN] = "Unknown",
+     [CONNECTION_TYPE_RAOP]    = "RAOP",
+     [CONNECTION_TYPE_AIRPLAY] = "AirPlay",
+-    [CONNECTION_TYPE_PTTH]    = "AirPlay (reversed)",
++    [CONNECTION_TYPE_EVENT]   = "EVENT (reverse HTTP)",
+     [CONNECTION_TYPE_HLS]     = "HLS"
+ };
+ 
+@@ -44,8 +44,6 @@ struct http_connection_s {
+     connection_type_t type;
+     http_request_t *request;
+     int pending_remove;
+-    char staging[8];
+-    int staging_len;
+     time_t last_active;
+ };
+ typedef struct http_connection_s http_connection_t;
+@@ -182,8 +180,6 @@ httpd_init(logger_t *logger, httpd_callbacks_t *callbacks, int nohold)
+         httpd->connections[i].type = CONNECTION_TYPE_UNKNOWN;
+         httpd->connections[i].request = NULL;
+         httpd->connections[i].pending_remove = 0;
+-        httpd->connections[i].staging_len = 0;
+-        httpd->connections[i].staging[0] = '\0';
+         httpd->connections[i].last_active = time(NULL);
+     }
+ 
+@@ -249,8 +245,6 @@ httpd_remove_connection(httpd_t *httpd, http_connection_t *connection, int sock_
+         httpd->open_connections--;
+     }
+     connection->type = CONNECTION_TYPE_UNKNOWN;
+-    connection->staging_len = 0;
+-    connection->staging[0] = '\0';
+ }
+ 
+ static int
+@@ -282,8 +276,6 @@ httpd_add_connection(httpd_t *httpd, int fd, unsigned char *local, int local_len
+     httpd->connections[i].user_data = user_data;
+     httpd->connections[i].pending_remove = 0;
+     httpd->connections[i].type = CONNECTION_TYPE_UNKNOWN;   //should not be necessary ...
+-    httpd->connections[i].staging_len = 0;
+-    httpd->connections[i].staging[0] = '\0';
+     httpd->connections[i].last_active = time(NULL);
+     return 0;
+ }
+@@ -371,8 +363,6 @@ static THREAD_RETVAL
+ httpd_thread(void *arg)
+ {
+     httpd_t *httpd = arg;
+-    char http[] = "HTTP/1.1";
+-    char event[] = "EVENT/1.0";
+     char buffer[1024];
+     int timeout_limit = 60; //drop connection after 60 secs of silence
+ 
+@@ -384,6 +374,7 @@ httpd_thread(void *arg)
+         struct timeval tv;
+         int nfds = 0;
+         int nfds_set = 0;
++        time_t now = time(NULL);
+ 
+         MUTEX_LOCK(httpd->run_mutex);
+         if (!httpd->running) {
+@@ -414,17 +405,25 @@ httpd_thread(void *arg)
+         }
+         for (int i = 0; i < httpd->max_connections; i++) {
+             int socket_fd;
+-            if (!httpd->connections[i].connected) {
++            http_connection_t *connection = &httpd->connections[i];
++            if (!connection->connected) {
+                 continue;
+             }
+-            if (httpd->connections[i].pending_remove) {
+-                httpd_remove_connection(httpd, &httpd->connections[i], 0);
++            if (connection->pending_remove) {
++                httpd_remove_connection(httpd, connection, 0);
++                continue;
++            }
++            if (now - connection->last_active > timeout_limit) {
++                logger_log(httpd->logger, LOGGER_WARNING,
++                           "httpd closing dead connection on socket %d after timeout_limit = %d seconds of inactivity",
++                            connection->socket_fd, timeout_limit);
++                httpd_remove_connection(httpd, connection, 0);
+                 continue;
+             }
+-            socket_fd = httpd->connections[i].socket_fd;
++            socket_fd = connection->socket_fd;
+             FD_SET(socket_fd, &rfds);
+             if (nfds <= socket_fd) {
+-                nfds = socket_fd+1;
++                nfds = socket_fd + 1;
+             }
+         }
+ 
+@@ -449,7 +448,6 @@ httpd_thread(void *arg)
+                 continue;
+             }
+         }
+-        time_t now = time(NULL);
+         if (httpd->open_connections < httpd->max_connections &&
+             httpd->server_fd6 != -1 && FD_ISSET(httpd->server_fd6, &rfds)) {
+             int ret = httpd_accept_connection(httpd, httpd->server_fd6, 1);
+@@ -470,19 +468,10 @@ httpd_thread(void *arg)
+             if (!FD_ISSET(connection->socket_fd, &rfds)) {
+                 continue;
+             }
+-            if (now - connection->last_active > timeout_limit) {
+-                logger_log(httpd->logger, LOGGER_WARNING,
+-                           "httpd closing dead connection on socket %d after timeout_limit = %d seconds of inactivity",
+-                            connection->socket_fd, timeout_limit);
+-                httpd_remove_connection(httpd, connection, 0);
+-            }
+             /* If not in the middle of request, allocate one */
+             if (!connection->request) {
+                 connection->request = http_request_init();
+                 assert(connection->request);
+-                if (connection->type == CONNECTION_TYPE_PTTH) {
+-                    http_request_is_reverse(connection->request);
+-                }
+                 logger_log(httpd->logger, LOGGER_DEBUG, "new request, connection %d, socket %d type %s",
+                            i, connection->socket_fd, typename [connection->type]);
+             }
+@@ -507,72 +496,59 @@ httpd_thread(void *arg)
+                 }
+                 logger_log(httpd->logger, LOGGER_DEBUG, " ");
+             }
+-            /* reverse-http responses from the client must not be sent to the llhttp parser:
+-               such messages start with "HTTP/1.1" (or sometimes with "EVENT/1.0") */
+-            if (connection->staging_len < 8) {
+-                int bytes_needed = 8 - connection->staging_len;
+-                int ret = recv(connection->socket_fd, 
+-                               connection->staging + connection->staging_len, 
+-                               bytes_needed, 0);
+-                if (ret == 0) {
+-                    logger_log(httpd->logger, LOGGER_DEBUG, "client closed connection on socket %d", connection->socket_fd);
+-                    httpd_remove_connection(httpd, connection, 0);
+-                    continue;
+-                } else if (ret == -1) {
+-                    if (errno == SOCKET_ERRORNAME(EAGAIN) || errno == SOCKET_ERRORNAME(EWOULDBLOCK) || errno == SOCKET_ERRORNAME(EINTR)) {
+-                        continue;
+-                    } else {
+-                        httpd_remove_connection(httpd, connection, SOCKET_GET_ERROR());
+-                        continue;
+-                    }
+-                }
+-                connection->last_active = time(NULL);
+-                connection->staging_len += ret;
+-                if (connection->staging_len < 8) {
+-                    connection->staging[connection->staging_len] = '\0';
++
++            int ret = (int) recv(connection->socket_fd, buffer, sizeof(buffer), 0);
++            if (ret == 0) {
++                httpd_remove_connection(httpd, connection, 0);
++                continue;
++            } else if (ret == -1) {
++                if (errno == SOCKET_ERRORNAME(EAGAIN) || errno == SOCKET_ERRORNAME(EWOULDBLOCK) || errno == SOCKET_ERRORNAME(EINTR)) {
+                     continue;
+                 } else {
+-                    memcpy(buffer, connection->staging, 8);
+-                    recv_datalen = 8;
+-                }		  
+-                if (!memcmp(connection->staging, http, 8) || !memcmp(connection->staging, event, 8)) {
+-                    http_request_set_reverse(connection->request);  
++                    httpd_remove_connection(httpd, connection, SOCKET_GET_ERROR());
++                    continue;
+                 }
+             } else {
+-                int ret = recv(connection->socket_fd, buffer, sizeof(buffer), 0);
+-                if (ret == 0) {
++                connection->last_active = time(NULL);
++                recv_datalen = ret;
++            }
++            if (connection->type == CONNECTION_TYPE_EVENT) {
++            /* Parse PTTH HTTP response / EVENT message from data read from connection */
++                ret = http_request_add_event_data(connection->request, buffer, (size_t) recv_datalen);
++                if (ret != 0) {
++                    logger_log(httpd->logger, LOGGER_ERR, "httd error in adding event data (too large?)): size = %d", recv_datalen);		  
+                     httpd_remove_connection(httpd, connection, 0);
+                     continue;
+-                } else if (ret == -1) {
+-                    if (errno == SOCKET_ERRORNAME(EAGAIN) || errno == SOCKET_ERRORNAME(EWOULDBLOCK) || errno == SOCKET_ERRORNAME(EINTR)) {
+-                        continue;
+-                    } else {
+-                        httpd_remove_connection(httpd, connection, SOCKET_GET_ERROR());
+-                        continue;
+-                    }
+-                } else {
+-                    connection->last_active = time(NULL);
+-                    recv_datalen = ret;
+                 }
+-            }
+-
+-            if (http_request_is_reverse(connection->request)) {
+-                /* this is a response from the client to a
+-                 * GET /event reverse HTTP request from the server */
+-                if (recv_datalen && logger_debug) {
+-                    buffer[recv_datalen] = '\0';
+-                    logger_log(httpd->logger, LOGGER_INFO, "<<<< received response from client"
+-                               " (reversed HTTP = \"PTTH/1.0\") connection"
+-                               " on socket %d:\n%s\n", connection->socket_fd, buffer);
+-                }
+-                if (recv_datalen == 0) {
+-                    httpd_remove_connection(httpd, connection, 0);
++                size_t header_len = 0;
++                size_t body_len = 0;
++                char *header = NULL;
++                char *body = NULL;
++                while (http_request_parse_event_data(connection->request, &header,  &header_len, &body, &body_len)) {
++                    if (header) {
++                        if (strlen(header) > 8 && !strncmp(header,"HTTP/1.1", 8)) {
++                            logger_log(httpd->logger, LOGGER_DEBUG, "<<<<<< reverse-HTTP response:\n%s\n", header);
++                        } else if (strlen(header) > 9 && !strncmp(header,"EVENT/1.0", 9)) {
++                            if (body) {
++                                logger_log(httpd->logger, LOGGER_INFO, "<<<<<< event message with Body:\n%s\n", header);
++                            } else {
++                                logger_log(httpd->logger, LOGGER_DEBUG, "<<<<<< event message without Body:\n%s\n", header);
++                            }
++                        } else {
++                            char line[33] = {0};
++                            strncpy(line, header, 32);
++                            logger_log(httpd->logger, LOGGER_ERR, "<<<<<< unrecognized message on EVENT channel:\n%s\n", line);
++                        }
++                        free (header);
++                    }
++                    if (body) {
++                        free (body);
++                    }
+                 }
+                 continue;
+             }
+-
+-            /* Parse HTTP request from data read from connection */
+-            http_request_add_data(connection->request, buffer, recv_datalen);
++            /* Parse HTTP request from data read from connection */	    
++            ret = http_request_add_data(connection->request, buffer, (size_t) recv_datalen);
+             if (http_request_has_error(connection->request)) {
+                 char *data = utils_data_to_text((const char *) buffer, recv_datalen);
+                 logger_log(httpd->logger, LOGGER_ERR, "httpd error in parsing: %s\n%s\n%s",
+@@ -597,21 +573,20 @@ httpd_thread(void *arg)
+                                connection->socket_fd, i, method, url, protocol);
+                 }
+                 httpd->callbacks.conn_request(connection->user_data, connection->request, &response);
+-                http_request_destroy(connection->request);
+-                connection->request = NULL;
+-
++ 
+                 if (response) {
+-                    const char *data;
+-                    int datalen;
+-                    int written;
+-                    int ret;
+-
++                    int datalen = 0;
+                     /* Get response data and datalen */
+-                    data = http_response_get_data(response, &datalen);
++                    const char *data = http_response_get_data(response, &datalen);
++
++                    bool is_upgrade_response = false;
++                    if (datalen >= 12 && strncmp(data, "HTTP/1.1 101", 12) == 0){
++                        is_upgrade_response = true;
++                    }
+ 
+-                    written = 0;
++                    int written = 0;
+                     while (written < datalen) {
+-                        ret = send(connection->socket_fd, data+written, datalen-written, 0);
++                        int ret = send(connection->socket_fd, data + written, datalen - written, 0);
+                         if (ret == -1) {
+                             logger_log(httpd->logger, LOGGER_ERR, "httpd error in sending data");
+                             break;
+@@ -619,14 +594,32 @@ httpd_thread(void *arg)
+                         written += ret;
+                     }
+ 
++                    if (is_upgrade_response){
++                        if (http_request_upgrade_data(connection->request) == 0) {
++                            http_request_set_reverse(connection->request);
++                            connection->type = CONNECTION_TYPE_EVENT;
++                            logger_log(httpd->logger, LOGGER_INFO, "socket %d upgraded to PTTH reverse-HTTP protocol", connection->socket_fd);
++                        } else {
++                            logger_log(httpd->logger, LOGGER_ERR, "failed to allocate memory for reverse-HTTP upgrade");
++                            exit(1);
++                        }
++                    }
++
+                     if (http_response_get_disconnect(response)) {
+                         logger_log(httpd->logger, LOGGER_INFO, "Disconnecting on software request");
+                         httpd_remove_connection(httpd, connection, 0);
+                     }
++                    http_response_destroy(response);
+                 } else {
+                     logger_log(httpd->logger, LOGGER_WARNING, "httpd didn't get response");
+                 }
+-                http_response_destroy(response);
++
++		// destroy the request unless the connection is CONNECTION_TYPE_EVENT, in which case it persists until the connection ends
++                if (connection->type != CONNECTION_TYPE_EVENT) {
++                    http_request_destroy(connection->request);
++                    connection->request = NULL;
++                }
++
+             } else {
+                 logger_log(httpd->logger, LOGGER_DEBUG, "Request not complete, waiting for more data...");
+             }
+diff --git a/lib/httpd.h b/lib/httpd.h
+index 72cc137..3c0363c 100644
+--- a/lib/httpd.h
++++ b/lib/httpd.h
+@@ -25,7 +25,7 @@ typedef enum connectype_type_e {
+     CONNECTION_TYPE_UNKNOWN,
+     CONNECTION_TYPE_RAOP,
+     CONNECTION_TYPE_AIRPLAY,
+-    CONNECTION_TYPE_PTTH,
++    CONNECTION_TYPE_EVENT,
+     CONNECTION_TYPE_HLS
+ } connection_type_t;
+ 
+diff --git a/lib/raop.c b/lib/raop.c
+index 07564e1..3484efd 100644
+--- a/lib/raop.c
++++ b/lib/raop.c
+@@ -865,7 +865,7 @@ void raop_remove_known_connections(raop_t * raop) {
+ void raop_remove_hls_connections(raop_t * raop) {
+     raop->video_play_conn = NULL;
+     httpd_remove_connections_by_type(raop->httpd, CONNECTION_TYPE_HLS);
+-    httpd_remove_connections_by_type(raop->httpd, CONNECTION_TYPE_PTTH);
++    httpd_remove_connections_by_type(raop->httpd, CONNECTION_TYPE_EVENT);
+     httpd_remove_connections_by_type(raop->httpd, CONNECTION_TYPE_AIRPLAY);
+ }
+ 
