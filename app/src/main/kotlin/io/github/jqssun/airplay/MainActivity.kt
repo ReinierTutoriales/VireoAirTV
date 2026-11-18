@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     combine(
-                        viewModel.serverState, viewModel.connectionCount,
+                        viewModel.serverState, _visualSession(),
                         viewModel.videoPlaybackActive, viewModel.videoPlaybackAspect,
                         viewModel.videoAspect
                     ) { _, _, _, _, _ -> }.collect { setPictureInPictureParams(_pipParams()) }
@@ -219,9 +219,11 @@ class MainActivity : ComponentActivity() {
         viewModel.mirroringActive, viewModel.videoPlaybackActive, viewModel.videoSessionPending
     ) { mirroring, video, pending -> mirroring || video || pending }
 
+    // pip only when there is a picture; an audio-only or idle connection would float an empty window
     private fun _shouldAutoPip(): Boolean =
         viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
-            viewModel.connectionCount.value > 0
+            (viewModel.mirroringActive.value || viewModel.videoPlaybackActive.value ||
+                viewModel.videoSessionPending.value)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
