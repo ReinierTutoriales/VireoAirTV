@@ -84,6 +84,14 @@ desde esa base y se aplican en orden con `git apply --unidiff-zero`.
 Riesgo abierto: el timeout de 60 s (parche 0013) también cierra el canal EVENT inactivo. Si el vídeo HLS
 falla tras una pausa larga, es el primer sospechoso.
 
+## Calidad de imagen del mirroring (referencia: moonlight-android `Game.java`)
+- El blit GL dibujaba en un buffer del tamaño de la vista (resolución de la UI) y el compositor lo
+  reescalaba al panel: dos remuestreos. Ahora `setFixedSize` al tamaño del stream: copia 1:1 y un único
+  escalado por hardware, como cuando MediaCodec dibuja directo en un `SurfaceView`.
+- `Surface.setFrameRate(fps, FIXED_SOURCE, CHANGE_FRAME_RATE_ALWAYS)` como Moonlight en TV; se borra al
+  terminar el mirroring. Un cambio de modo no instantáneo puede dejar la pantalla en negro un momento.
+- Media3 solo ofrece `OFF` y `ONLY_IF_SEAMLESS` para el cambio de frecuencia en HLS: no se toca.
+
 ## Verificado
 `assembleDebug` (arm64-v8a, armeabi-v7a, x86_64), `testDebugUnitTest`, `lintDebug`, `assembleSanitize` y
 `scripts/native-regress.sh` pasan. Comportamiento en TV: pendiente de validación física.
