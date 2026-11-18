@@ -1,0 +1,86 @@
+From 761b72f7f5232cbaeabe2986ffb23275c8560b47 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 05:36:02 -0500
+Subject: [PATCH] http_request: cap request head at 64 KiB and body at 32 MiB
+
+llhttp callbacks appended URL, header and body bytes without limit, so any client on the network could make the receiver allocate until it was killed. Return HPE_USER past the caps; the connection is then dropped as for other parse errors.
+---
+ lib/http_request.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/lib/http_request.c b/lib/http_request.c
+index ff32c48..e8fedba 100644
+--- a/lib/http_request.c
++++ b/lib/http_request.c
+@@ -24,6 +24,10 @@
+ #include "llhttp/llhttp.h"
+ 
+ #define MAX_EVENT_DATA 4096
++/* bound what a single client can make us allocate: request line + headers, and body.
++   The largest legitimate bodies are FCUP media playlists and cover art. */
++#define MAX_HEAD_BYTES (64 * 1024)
++#define MAX_BODY_BYTES (32 * 1024 * 1024)
+ 
+ struct http_request_s {
+     llhttp_t parser;
+@@ -41,14 +45,28 @@ struct http_request_s {
+ 
+     char *data;
+     size_t datalen;
++    size_t head_bytes;
+     int complete;
+ };
+ 
++static int
++charge_head(http_request_t *request, size_t length)
++{
++    if (length > MAX_HEAD_BYTES - request->head_bytes) {
++        return 0;
++    }
++    request->head_bytes += length;
++    return 1;
++}
++
+ static int
+ on_url(llhttp_t *parser, const char *at, size_t length)
+ {
+     http_request_t *request = parser->data;
+ 
++    if (!charge_head(request, length)) {
++        return HPE_USER;
++    }
+     char *new_url = realloc(request->url, request->url_len + length + 1); 
+     if (!new_url) {
+         return HPE_USER; 
+@@ -98,6 +116,10 @@ on_header_field(llhttp_t *parser, const char *at, size_t length)
+ {
+     http_request_t *request = parser->data;
+ 
++    if (!charge_head(request, length)) {
++        return HPE_USER;
++    }
++
+     /* Check if our index is a value */
+     if (request->headers_index % 2 == 1) {
+         request->headers_index++;
+@@ -145,6 +167,10 @@ on_header_value(llhttp_t *parser, const char *at, size_t length)
+ {
+     http_request_t *request = parser->data;
+ 
++    if (!charge_head(request, length)) {
++        return HPE_USER;
++    }
++
+     /* Check if our index is a field */
+     if (request->headers_index % 2 == 0) {
+         request->headers_index++;
+@@ -183,6 +209,9 @@ on_body(llhttp_t *parser, const char *at, size_t length)
+ {
+     http_request_t *request = parser->data;
+ 
++    if (length > MAX_BODY_BYTES - request->datalen) {
++        return HPE_USER;
++    }
+     size_t new_size = request->datalen + length + 1;
+     char *new_data = realloc(request->data, new_size);
+     if (!new_data) {
