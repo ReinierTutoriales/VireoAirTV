@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,6 +62,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.res.stringResource
+import io.github.jqssun.airplay.R
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -121,6 +126,22 @@ fun NowPlayingTv(
             label = "artScale",
         )
 
+        val artModifier = Modifier.graphicsLayer { scaleX = artScale; scaleY = artScale; alpha = if (state.playing) 1f else 0.85f }
+        if (maxWidth < maxHeight) {
+            // portrait (a phone in full screen): artwork above, text and controls below
+            val w = maxWidth
+            val h = maxHeight
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = w * 0.08f, vertical = h * 0.06f),
+                verticalArrangement = Arrangement.spacedBy(h * 0.04f, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                NowPlayingArt(state.artwork, artModifier.size(min(w * 0.84f, h * 0.48f)))
+                NowPlayingInfo(state, controlsVisible, (w / 400.dp).coerceIn(0.75f, 1.4f), Modifier.fillMaxWidth(),
+                    onPrevious, onPlayPause, onNext, playPauseFocus, centered = true)
+            }
+            return@BoxWithConstraints
+        }
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -128,13 +149,26 @@ fun NowPlayingTv(
             horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NowPlayingArt(
-                artwork = state.artwork,
-                modifier = Modifier
-                    .size(art)
-                    .graphicsLayer { scaleX = artScale; scaleY = artScale; alpha = if (state.playing) 1f else 0.85f },
-            )
-            Column(Modifier.width(textWidth), verticalArrangement = Arrangement.Center) {
+            NowPlayingArt(state.artwork, artModifier.size(art))
+            NowPlayingInfo(state, controlsVisible, scale, Modifier.width(textWidth), onPrevious, onPlayPause, onNext, playPauseFocus)
+        }
+    }
+}
+
+// title, artist, album, progress and the transport row that appears while the remote is in use
+@Composable
+private fun NowPlayingInfo(
+    state: NowPlayingState,
+    controlsVisible: Boolean,
+    scale: Float,
+    modifier: Modifier,
+    onPrevious: () -> Unit,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    playPauseFocus: FocusRequester,
+    centered: Boolean = false,
+) {
+            Column(modifier, verticalArrangement = Arrangement.Center) {
                 Crossfade(
                     targetState = Triple(state.title, state.artist, state.album),
                     animationSpec = tween(Motion.MEDIUM_MS, easing = Motion.Ease),
@@ -180,23 +214,22 @@ fun NowPlayingTv(
                     exit = fadeOut(tween(Motion.MEDIUM_MS, easing = Motion.Ease)),
                 ) {
                     Row(
-                        modifier = Modifier.padding(top = 18.dp * scale),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp * scale),
+                        modifier = Modifier.fillMaxWidth().padding(top = 18.dp * scale),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp * scale, if (centered) Alignment.CenterHorizontally else Alignment.Start),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TransportButton(Icons.Rounded.SkipPrevious, 44.dp * scale, onPrevious)
+                        TransportButton(Icons.Rounded.SkipPrevious, 44.dp * scale, onPrevious, label = R.string.cd_previous)
                         TransportButton(
                             if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                             56.dp * scale,
                             onPlayPause,
                             Modifier.focusRequester(playPauseFocus),
+                            label = R.string.cd_play_pause,
                         )
-                        TransportButton(Icons.Rounded.SkipNext, 44.dp * scale, onNext)
+                        TransportButton(Icons.Rounded.SkipNext, 44.dp * scale, onNext, label = R.string.cd_next)
                     }
                 }
             }
-        }
-    }
 }
 
 @Composable
@@ -252,7 +285,7 @@ private fun ProgressLine(positionMs: Long, durationMs: Long, scale: Float) {
 
 // tvOS focus: the focused button gets a white disc with a dark glyph and lifts slightly
 @Composable
-private fun TransportButton(icon: ImageVector, size: Dp, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun TransportButton(icon: ImageVector, size: Dp, onClick: () -> Unit, modifier: Modifier = Modifier, @androidx.annotation.StringRes label: Int) {
     var focused by remember { mutableStateOf(false) }
     val lift by animateFloatAsState(if (focused) 1.12f else 1f, tween(Motion.SHORT_MS, easing = Motion.Ease), label = "lift")
     Box(
@@ -266,7 +299,7 @@ private fun TransportButton(icon: ImageVector, size: Dp, onClick: () -> Unit, mo
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = if (focused) Color.Black else Color.White, modifier = Modifier.fillMaxSize(0.58f))
+        Icon(icon, contentDescription = stringResource(label), tint = if (focused) Color.Black else Color.White, modifier = Modifier.fillMaxSize(0.58f))
     }
 }
 
@@ -310,6 +343,8 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
         if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
     )
 
+    var scanning by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) { onDispose { if (scanning) viewModel.audioScanEnd() } }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(controlsVisible) {
@@ -320,7 +355,23 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
     Box(
         modifier
             .fillMaxSize()
+            // touch screens and pointer remotes (air mouse): a tap shows the controls
+            .pointerInput(Unit) { detectTapGestures { wake++ } }
             .onPreviewKeyEvent { e ->
+                // << and >> scan while held, like the hold buttons of the other layouts
+                if (e.key == Key.MediaRewind || e.key == Key.MediaFastForward) {
+                    when (e.type) {
+                        KeyEventType.KeyDown -> if (!scanning) {
+                            scanning = true
+                            viewModel.audioScanBegin(forward = e.key == Key.MediaFastForward)
+                        }
+                        KeyEventType.KeyUp -> if (scanning) {
+                            scanning = false
+                            viewModel.audioScanEnd()
+                        }
+                    }
+                    return@onPreviewKeyEvent true
+                }
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {
                     Key.MediaPlayPause -> playPause()
@@ -385,11 +436,17 @@ fun rememberNowPlayingState(viewModel: io.github.jqssun.airplay.viewmodel.MainVi
 
 /** The same Now Playing in the Overview card; OK opens it full screen. */
 @Composable
-fun NowPlayingTvCard(viewModel: io.github.jqssun.airplay.viewmodel.MainViewModel, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+fun NowPlayingTvCard(
+    viewModel: io.github.jqssun.airplay.viewmodel.MainViewModel,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+) {
     val state = rememberNowPlayingState(viewModel)
     Box(
         modifier
             .fillMaxSize()
+            .focusRequester(focusRequester)
             .dpadFocus(RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .clickable(role = Role.Button, onClick = onOpen)

@@ -43,6 +43,8 @@
     <string name="cd_exit_fullscreen">Exit fullscreen</string>
     <string name="cd_cover_art">Cover art</string>
     <string name="cd_play_pause">Play/Pause</string>
+    <string name="cd_previous">Previous</string>
+    <string name="cd_next">Next</string>
     <string name="cd_rewind">Rewind</string>
     <string name="cd_fast_forward">Fast forward</string>
     <string name="volume_server">Receiver volume</string>
