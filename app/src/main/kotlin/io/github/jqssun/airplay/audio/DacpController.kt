@@ -68,10 +68,11 @@ class DacpController(ctx: Context) {
 
     private fun _resolve() {
         _stopTracking()
-        if (dacpId.isEmpty()) return
+        val normalizedId = dacpId.trim().uppercase().padStart(16, '0')
+        if (dacpId.isBlank()) return
         val info = NsdServiceInfo().apply {
             serviceType = "_dacp._tcp"
-            serviceName = "iTunes_Ctrl_$dacpId"
+            serviceName = "iTunes_Ctrl_$normalizedId"
         }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) _track(info) else _resolveLegacy(info)
