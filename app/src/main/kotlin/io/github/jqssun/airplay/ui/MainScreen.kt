@@ -181,7 +181,20 @@ private fun MainScreenContent(
     val serverState by viewModel.serverState.collectAsState()
     val localNetwork by viewModel.localNetwork.collectAsState()
     val serverName by viewModel.pref(Prefs.SERVER_NAME).collectAsState()
+    // TV: the screen follows the session. Each new content (mirroring, music, video) puts the projection in
+    // front and hides the menu; Back brings the menu up until the next content starts. No timers: the
+    // session ([io.github.jqssun.airplay.service.Session]) already holds music across pauses and tracks.
+    val content = when {
+        videoPlaybackActive || videoSessionPending -> 3
+        mirroringActive -> 2
+        audioOnly && connections > 0 -> 1
+        else -> 0
+    }
+    LaunchedEffect(tv, content) {
+        if (tv && content != 0) showToolUi = false
+    }
     LaunchedEffect(mirroringActive, audioOnly, videoPlaybackActive, connections, pin) {
+        if (tv) return@LaunchedEffect
         if (connections == 0) {
             // brief dip between tracks or apps must not flash the app UI; exit only if still idle
             delay(1_500)
