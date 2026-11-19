@@ -141,6 +141,19 @@ class ScreensTvScreenshotTest {
         org.junit.Assert.assertEquals("the server keeps running", ServerState.RUNNING, vm.serverState.value)
     }
 
+    // OK on the standby screen opens the menu; a second OK must not land on Stop and end the server
+    @Test fun menuDoesNotLandOnStop() {
+        set("_serverState", ServerState.RUNNING)
+        render()
+        compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionCenter) }
+        compose.waitForIdle()
+        compose.onNodeWithText("Stop").assertExists()
+        val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
+            .flatMap { it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() } }
+            .map { it.text }
+        org.junit.Assert.assertEquals("focus lands on the Overview tab", listOf("Overview"), focused)
+    }
+
     @Test fun receiverWaiting() {
         set("_serverState", ServerState.RUNNING); set("_connectionCount", 1)
         render(receiverOnly = true); save("tv_receiver_only")

@@ -696,6 +696,7 @@ private fun MainScreenContent(
         }
     } else {
         if (tv) BackHandler { showToolUi = false }
+        val overviewTabFocus = remember { FocusRequester() }
         Scaffold(
             bottomBar = {
                 Column {
@@ -706,12 +707,13 @@ private fun MainScreenContent(
                     )
                     NavigationBar {
                         Tab.entries.forEach { t ->
+                            val tabModifier = if (t == Tab.OVERVIEW) Modifier.focusRequester(overviewTabFocus) else Modifier
                             NavigationBarItem(
                                 selected = tab == t,
                                 onClick = { tab = t },
                                 icon = { Icon(t.icon, null) },
                                 label = { Text(stringResource(t.labelRes)) },
-                                modifier = Modifier.dpadFocus()
+                                modifier = tabModifier.dpadFocus()
                             )
                         }
                     }
@@ -727,7 +729,8 @@ private fun MainScreenContent(
                         if (tv) showToolUi = false
                     },
                     onPip = onPip, onLocalNetwork = onLocalNetwork,
-                    showAudioMode = audioOnly
+                    showAudioMode = audioOnly,
+                    safeFocus = overviewTabFocus
                 )
             }
         }
@@ -745,12 +748,14 @@ private fun TabContent(
     onFullscreen: () -> Unit,
     onPip: () -> Unit,
     onLocalNetwork: () -> Unit,
-    showAudioMode: Boolean
+    showAudioMode: Boolean,
+    safeFocus: FocusRequester
 ) {
     when (tab) {
         Tab.OVERVIEW -> OverviewContent(
             viewModel, video,
-            onFullscreen = onFullscreen, onPip = onPip, onLocalNetwork = onLocalNetwork, showAudioMode = showAudioMode
+            onFullscreen = onFullscreen, onPip = onPip, onLocalNetwork = onLocalNetwork, showAudioMode = showAudioMode,
+            safeFocus = safeFocus
         )
         Tab.LOGS -> LogsScreen(viewModel)
         Tab.SETTINGS -> SettingsScreen(viewModel)
@@ -764,7 +769,9 @@ private fun OverviewContent(
     onFullscreen: () -> Unit,
     onPip: () -> Unit,
     onLocalNetwork: () -> Unit,
-    showAudioMode: Boolean = false
+    showAudioMode: Boolean = false,
+    // where focus goes on a TV when the first button would be Stop
+    safeFocus: FocusRequester? = null
 ) {
     val state by viewModel.serverState.collectAsState()
     val localNetwork by viewModel.localNetwork.collectAsState()
@@ -782,8 +789,16 @@ private fun OverviewContent(
     val nowPlayingFocus = remember { FocusRequester() }
     // on return from full screen OK must reopen Now Playing, not land on Stop and end the server
     val nowPlayingCard = tv && showAudioMode && state == ServerState.RUNNING && connections > 0
-    LaunchedEffect(nowPlayingCard) {
-        if (tv) runCatching { (if (nowPlayingCard) nowPlayingFocus else startFocus).requestFocus() }
+    // a running server's first button is Stop: OK pressed again after opening the menu would end it
+    val stopFirst = state == ServerState.RUNNING && !grant
+    LaunchedEffect(nowPlayingCard, stopFirst) {
+        if (tv) runCatching {
+            when {
+                nowPlayingCard -> nowPlayingFocus
+                stopFirst -> safeFocus ?: return@runCatching
+                else -> startFocus
+            }.requestFocus()
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
