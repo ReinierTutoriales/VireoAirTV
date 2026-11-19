@@ -999,6 +999,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _launchForContent()
     }
 
+    @Volatile private var _coverArtAtMs = 0L
+
     override fun onMetadata(data: ByteArray) {
         val map = DmapParser.parse(data)
         val parsed = TrackInfo.fromDmap(map, null)
@@ -1006,7 +1008,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         if (parsed.title.isEmpty() && parsed.artist.isEmpty() && parsed.album.isEmpty()) return
         val prev = _trackInfo.value
         val sameTrack = parsed.title == prev.title && parsed.artist == prev.artist && parsed.album == prev.album
-        val info = if (sameTrack) {
+        // iOS sometimes sends the new track's cover art just before its DMAP metadata; keep it if fresh
+        val freshArt = SystemClock.elapsedRealtime() - _coverArtAtMs <= COVER_ART_PRECEDES_METADATA_MS
+        val info = if (sameTrack || freshArt) {
             parsed.copy(coverArt = prev.coverArt)
         } else {
             _coverArtBytes = null
@@ -1029,6 +1033,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _coverArtBytes = if (sample == 1) data else ByteArrayOutputStream().also {
             bmp.compress(Bitmap.CompressFormat.JPEG, COVER_ART_JPEG_QUALITY, it)
         }.toByteArray()
+        _coverArtAtMs = SystemClock.elapsedRealtime()
         _trackInfo.value = _trackInfo.value.copy(coverArt = bmp)
         _updateMediaMetadata()
         _refreshDacpPlayer()
@@ -1457,6 +1462,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // the TV player shows covers large on 1080p/4K panels: only oversized originals (>= 2x this) are reduced
         private const val COVER_ART_MAX_PX = 1920
         private const val COVER_ART_JPEG_QUALITY = 90
+        private const val COVER_ART_PRECEDES_METADATA_MS = 1_000L
         const val VIDEO_POLL_PENDING_TIMEOUT_MS = 3_000L
         // long enough for a sender to queue the next track, short enough that a real stop still exits
         const val VIDEO_HANDOFF_GRACE_MS = 6_000L
