@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.RequiresApi
 import android.util.Log
 import com.google.common.util.concurrent.ListenableFuture
@@ -22,6 +24,8 @@ class DacpController(ctx: Context) {
 
     private val nsdManager = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val exec = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var fallbackTask: Runnable? = null
 
     @Volatile var dacpId = ""
     @Volatile var activeRemote = ""
@@ -81,12 +85,15 @@ class DacpController(ctx: Context) {
     private fun _track(info: NsdServiceInfo) {
         val callback = object : NsdManager.ServiceInfoCallback {
             override fun onServiceInfoCallbackRegistrationFailed(code: Int) {
-                Log.w(TAG, "DACP resolve failed: $code")
+                Log.w(TAG, "DACP resolve failed: $code; falling back to resolveService")
+                _resolveLegacy(info)
             }
             override fun onServiceUpdated(si: NsdServiceInfo) {
                 val addr = si.hostAddresses.firstOrNull { it is Inet4Address } ?: si.hostAddresses.firstOrNull()
                 host = addr?.hostAddress ?: return
                 port = si.port
+                fallbackTask?.let { mainHandler.removeCallbacks(it) }
+                fallbackTask = null
                 Log.i(TAG, "DACP resolved: $host:$port")
             }
             override fun onServiceLost() {}
@@ -94,6 +101,16 @@ class DacpController(ctx: Context) {
         }
         nsdManager.registerServiceInfoCallback(info, Runnable::run, callback)
         infoCallback = callback
+        // some Android TV 14 mDNS stacks never fire onServiceUpdated for a hand-built NsdServiceInfo;
+        // fall back to resolveService if no address arrives shortly
+        val task = Runnable {
+            if (host.isEmpty() && infoCallback === callback) {
+                Log.i(TAG, "DACP ServiceInfoCallback timed out; trying resolveService")
+                _resolveLegacy(info)
+            }
+        }
+        fallbackTask = task
+        mainHandler.postDelayed(task, CALLBACK_FALLBACK_MS)
     }
 
     @Suppress("DEPRECATION")
@@ -111,6 +128,8 @@ class DacpController(ctx: Context) {
     }
 
     private fun _stopTracking() {
+        fallbackTask?.let { mainHandler.removeCallbacks(it) }
+        fallbackTask = null
         val callback = infoCallback ?: return
         infoCallback = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -158,5 +177,6 @@ class DacpController(ctx: Context) {
 
     companion object {
         private const val TAG = "DacpController"
+        private const val CALLBACK_FALLBACK_MS = 1_500L
     }
 }
