@@ -34,7 +34,7 @@ fun DeviceRequestDialog(
             text = { Text(stringResource(R.string.device_request_help)) },
             confirmButton = {
                 TextButton(onClick = { onAnswer(true) }, modifier = Modifier.focusRequester(focus)) {
-                    Text(stringResource(R.string.device_allow))
+                    Text(stringResource(R.string.btn_allow))
                 }
                 // inside the dialog's window: requested from outside, it runs before the button exists
                 LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }

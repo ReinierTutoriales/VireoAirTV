@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Notification -->
+    <string name="notification_channel">Servicio AirPlay</string>
+    <string name="notification_title">Servidor AirPlay activo</string>
+    <string name="notification_text">Aceptando conexiones AirPlay</string>
+    <string name="notification_pin_title">Se requiere el PIN de AirPlay</string>
+    <string name="notification_pin_text">PIN: %1$s</string>
+    <string name="notification_alerts_channel">Avisos de conexión AirPlay</string>
+    <string name="notification_launch_title">Dispositivo AirPlay conectado</string>
+    <string name="notification_launch_text">Toca para abrir el reproductor. Concede el permiso de superposición para que se abra solo.</string>
+    <string name="notification_launch_action_overlay">Conceder permiso</string>
+
+    <!-- Tabs -->
+    <string name="tab_overview">Inicio</string>
+    <string name="tab_logs">Registro</string>
+    <string name="tab_settings">Ajustes</string>
+
+    <!-- Overview -->
+    <string name="server_stopped">Servidor detenido</string>
+    <string name="waiting_for_connection">Esperando conexión…</string>
+    <string name="waiting_for_playback">Pulsa reproducir en el dispositivo…</string>
+    <string name="error_starting_server">Error al iniciar el servidor</string>
+    <plurals name="connected_count">
+        <item quantity="one">%d conectado</item>
+        <item quantity="many">%d conectados</item>
+        <item quantity="other">%d conectados</item>
+    </plurals>
+    <string name="error_label">Error</string>
+    <string name="stopped_label">Detenido</string>
+    <string name="btn_start">Iniciar</string>
+    <string name="btn_stop">Detener</string>
+    <string name="btn_allow">Permitir</string>
+    <string name="btn_open_settings">Abrir ajustes</string>
+    <string name="local_network_label">Se necesita acceso a dispositivos cercanos</string>
+    <string name="local_network_desc">Permite el acceso a dispositivos cercanos para que los dispositivos AirPlay encuentren este y se conecten</string>
+    <string name="unknown_track">Desconocido</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_pip">Imagen en imagen</string>
+    <string name="cd_fullscreen">Pantalla completa</string>
+    <string name="cd_exit_fullscreen">Salir de pantalla completa</string>
+    <string name="cd_cover_art">Carátula</string>
+    <string name="cd_play_pause">Reproducir/Pausa</string>
+    <string name="cd_previous">Anterior</string>
+    <string name="pin_instructions">Escribe este código en tu iPhone, iPad o Mac</string>
+    <string name="cd_next">Siguiente</string>
+    <string name="cd_rewind">Retroceder</string>
+    <string name="cd_fast_forward">Avanzar</string>
+    <string name="volume_server">Volumen del receptor</string>
+    <string name="volume_client">Volumen del dispositivo</string>
+    <string name="cd_download">Descargar vídeo</string>
+
+    <!-- Video download -->
+    <string name="download_saved">Guardado en %1$s</string>
+    <string name="download_failed">Error en la descarga</string>
+
+    <!-- Player gestures -->
+    <plurals name="gesture_seek_seconds">
+        <item quantity="one">%1$d segundo</item>
+        <item quantity="many">%1$d segundos</item>
+        <item quantity="other">%1$d segundos</item>
+    </plurals>
+    <string name="select_playback_speed">Velocidad de reproducción</string>
+    <string name="cd_reset_speed">Restablecer velocidad</string>
+    <string name="skip_silence">Omitir silencios</string>
+
+    <!-- Player controls -->
+    <string name="cd_back">Atrás</string>
+    <string name="cd_rewind_10">Retroceder 10 segundos</string>
+    <string name="cd_forward_10">Avanzar 10 segundos</string>
+    <string name="cd_copy_url">Copiar URL del vídeo</string>
+    <string name="cd_rotate">Girar pantalla</string>
+    <string name="cd_lock_controls">Bloquear controles</string>
+    <string name="cd_unlock_controls">Desbloquear controles</string>
+    <string name="scale_best_fit">Ajustar</string>
+    <string name="scale_stretch">Estirar</string>
+    <string name="scale_crop">Recortar</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_pin_title">PIN de AirPlay</string>
+    <string name="btn_ok">Aceptar</string>
+
+    <!-- Logs screen -->
+    <string name="btn_export">Exportar</string>
+    <string name="btn_clear">Borrar</string>
+    <string name="export_logs_chooser_title">Exportar registro</string>
+    <string name="export_saved">Informe guardado: %1$s</string>
+    <string name="export_not_saved">No se pudo guardar el informe</string>
+
+    <!-- Settings sections -->
+    <string name="section_server">Servidor</string>
+    <string name="section_connection">Conexión</string>
+    <string name="section_display">Pantalla</string>
+    <string name="section_decode">Decodificación</string>
+    <string name="section_developer">Desarrollo</string>
+
+    <!-- Settings: Server -->
+    <string name="setting_server_name">Nombre del servidor</string>
+    <string name="setting_server_port">Puerto del servidor</string>
+    <string name="setting_auto_start">Iniciar el servidor automáticamente</string>
+    <string name="setting_auto_start_desc">Inicia el servidor AirPlay al abrir la app</string>
+    <string name="setting_boot_auto_start">Iniciar el servidor al encender</string>
+    <string name="setting_boot_auto_start_desc">Inicia el servidor AirPlay cuando arranca el dispositivo</string>
+    <string name="setting_run_in_background">Seguir en segundo plano</string>
+    <string name="setting_run_in_background_desc">Mantiene el servidor activo al salir de la app</string>
+
+    <!-- Settings: Connection -->
+    <string name="setting_require_pin">Pedir PIN (beta)</string>
+    <string name="setting_require_pin_desc">Pide un PIN de 4 cifras a cada conexión nueva</string>
+    <string name="setting_forget_paired">Olvidar dispositivos vinculados</string>
+    <string name="netcheck_run">Comprobar red</string>
+    <string name="netcheck_title">Comprobación de red</string>
+    <string name="netcheck_pass">Correcto</string>
+    <string name="netcheck_problem">Problema</string>
+    <string name="netcheck_cant_verify">No se puede comprobar</string>
+    <string name="netcheck_item_receiver">Receptor</string>
+    <string name="netcheck_item_network">Red</string>
+    <string name="netcheck_item_airplay">Anuncio AirPlay</string>
+    <string name="netcheck_item_raop">Anuncio de audio</string>
+    <string name="netcheck_item_same_network">iPhone en la misma red</string>
+    <string name="netcheck_receiver_running">Activo en el puerto %1$s.</string>
+    <string name="netcheck_receiver_off">Detenido. Inícialo desde Inicio.%1$s</string>
+    <string name="netcheck_receiver_error">No pudo iniciarse: puede que el puerto esté en uso. Reinicia la app.%1$s</string>
+    <string name="netcheck_network_wifi">Wi-Fi, dirección %1$s.</string>
+    <string name="netcheck_network_ethernet">Ethernet, dirección %1$s.</string>
+    <string name="netcheck_network_other">Ni Wi-Fi ni Ethernet (%1$s): puede que el iPhone esté en otra red.</string>
+    <string name="netcheck_network_no_address">Aún sin dirección IPv4: puede que la TV todavía se esté uniendo a la red.%1$s</string>
+    <string name="netcheck_network_none">Sin red. Conecta la TV a la misma Wi-Fi que el iPhone.%1$s</string>
+    <string name="netcheck_service_registered">Anunciado (%1$s).</string>
+    <string name="netcheck_service_own">El servicio de Android falló; lo anuncia la propia app (%1$s).</string>
+    <string name="netcheck_service_pending">Esperando a que Android lo anuncie (%1$s).</string>
+    <string name="netcheck_service_failed">Android se negó a anunciarlo: %1$s. Reinicia la TV.</string>
+    <string name="netcheck_service_off">Sin anunciar: el receptor está detenido (%1$s).</string>
+    <string name="netcheck_service_usb">Anunciado solo por USB (%1$s), según los ajustes.</string>
+    <string name="netcheck_service_not_used">Desactivado en Ajustes (%1$s); el anuncio AirPlay cubre el audio.</string>
+    <string name="netcheck_external">La TV no puede ver esto. Si el iPhone no la muestra, comprueba que ambos estén en la misma red y que el router no tenga modo invitado ni aislamiento de clientes.%1$s</string>
+    <string name="trusted_device_unnamed">Dispositivo vinculado</string>
+    <string name="trusted_device_forget">Vinculado con el PIN. Selecciónalo para olvidarlo: se le volverá a pedir el PIN.</string>
+    <string name="setting_forget_paired_desc">Los dispositivos que escribieron el PIN se conectan sin él. Olvídalos para que se les vuelva a pedir.</string>
+    <string name="setting_allow_new_conn">Permitir conexiones nuevas</string>
+    <string name="setting_allow_new_conn_desc">Desconecta al dispositivo actual cuando se conecta otro</string>
+
+    <!-- Settings: Display -->
+    <string name="setting_idle_preview">Vista previa en reposo</string>
+    <string name="setting_idle_preview_desc">Muestra la superficie de vídeo mientras espera una conexión</string>
+    <string name="setting_auto_fullscreen">Pantalla completa automática</string>
+    <string name="setting_auto_fullscreen_desc">Pasa a pantalla completa cuando se conecta un dispositivo</string>
+    <string name="setting_keep_screen_on">Mantener la pantalla encendida</string>
+    <string name="setting_keep_screen_on_desc">Evita la suspensión mientras hay un dispositivo conectado</string>
+    <string name="setting_advertise_video">Anunciar vídeo AirPlay</string>
+    <string name="setting_advertise_video_desc">Si está desactivado, los vídeos se envían solo como audio</string>
+    <string name="setting_advertise_mirroring">Anunciar duplicado de pantalla AirPlay</string>
+    <string name="setting_advertise_mirroring_desc">Si está desactivado, el dispositivo no aparece para duplicar la pantalla</string>
+    <string name="setting_advertise_audio">Anunciar audio AirPlay</string>
+    <string name="setting_advertise_audio_desc">Si está desactivado, el dispositivo solo sirve para duplicar la pantalla y no aparece en los reproductores</string>
+    <string name="setting_alac">Anunciar el códec ALAC</string>
+    <string name="setting_alac_desc">Ofrece ALAC en el registro mDNS; se usa para la música</string>
+    <string name="setting_aac">Anunciar el códec AAC</string>
+    <string name="setting_aac_desc">Ofrece AAC-ELD/AAC-LC en el registro mDNS; se usa para el audio del duplicado de pantalla</string>
+    <string name="setting_launch_on_connect">Abrir para duplicado y vídeo</string>
+    <string name="setting_launch_on_connect_desc">Pasa al frente cuando llega imagen y vuelve a la app anterior al terminar; el audio sigue sonando en segundo plano</string>
+    <string name="setting_launch_on_connect_no_permission">Toca para conceder el permiso Mostrar sobre otras apps</string>
+    <string name="setting_discovery">Visible por</string>
+    <string name="setting_discovery_all_desc">Se anuncia en todas las interfaces disponibles. Usa NsdManager.</string>
+    <string name="setting_discovery_usb_desc">Se anuncia solo por anclaje USB para forzar la conexión por cable. Usa un respondedor mDNS propio.</string>
+    <string name="chip_all_networks">Todas las redes</string>
+    <string name="chip_usb_only">Solo USB</string>
+    <string name="setting_resolution">Resolución</string>
+    <string name="setting_resolution_desc">Resolución de vídeo que se anuncia a los dispositivos</string>
+    <string name="setting_resolution_width">Ancho</string>
+    <string name="setting_resolution_height">Alto</string>
+    <string name="setting_max_fps">FPS máximos</string>
+    <string name="setting_max_fps_desc">Fotogramas por segundo máximos que se anuncian a los dispositivos</string>
+    <string name="setting_max_fps_placeholder">FPS</string>
+    <string name="setting_overscanned">Sobrebarrido</string>
+    <string name="setting_overscanned_desc">Añade un margen para pantallas con sobrebarrido</string>
+    <string name="chip_custom">Personalizada</string>
+    <string name="chip_device_portrait">Vertical</string>
+    <string name="chip_device_landscape">Horizontal</string>
+
+    <!-- Settings: Decode -->
+    <string name="setting_h265_desc">Automático solo usa decodificadores H.265 que se sabe que funcionan</string>
+    <string name="setting_enforce_sdr_desc">Marca el vídeo como SDR de rango limitado; desactívalo para dejar pasar fuentes HDR</string>
+    <string name="setting_sw_alac">Forzar decodificador ALAC por software</string>
+    <string name="setting_sw_alac_desc">Usa siempre el decodificador ALAC por software en lugar del decodificador del sistema; puede afectar a la latencia</string>
+    <string name="setting_sw_aac">Forzar decodificador AAC por software</string>
+    <string name="setting_sw_aac_desc">Usa siempre el decodificador AAC por software en lugar del decodificador del sistema; puede afectar a la latencia</string>
+    <string name="setting_sync_client_volume">Sincronizar volumen del dispositivo</string>
+    <string name="setting_sync_client_volume_desc">Usa el volumen del dispositivo como volumen del receptor</string>
+
+    <!-- Settings: Developer -->
+    <string name="setting_developer_options">Opciones de desarrollo</string>
+    <string name="setting_developer_options_desc">Muestra opciones avanzadas</string>
+    <string name="setting_key_allow_frame_drop_desc">Permite que los decodificadores de vídeo descarten fotogramas internamente para no retrasarse (Android 10+)</string>
+    <string name="setting_realtime_decoder_priority_desc">Pide prioridad de tiempo real para el decodificador de audio</string>
+    <string name="setting_operating_rate_desc">Pide la máxima velocidad de operación al decodificador</string>
+    <string name="chip_auto">Auto</string>
+    <string name="chip_on">Sí</string>
+    <string name="chip_off">No</string>
+    <string name="setting_low_latency">Baja latencia</string>
+    <string name="setting_low_latency_desc">Decodifica el audio con baja latencia; gasta más energía y CPU</string>
+    <string name="setting_scheduled_output_buffer_release">Ritmo de fotogramas alineado</string>
+    <string name="setting_scheduled_output_buffer_release_desc">Programa cada fotograma decodificado para el VSYNC que corresponde a su marca de tiempo</string>
+    <string name="setting_audio_delay">Fijar retardo de audio</string>
+    <string name="setting_audio_delay_desc">Latencia de audio personalizada que se informa al dispositivo</string>
+    <string name="setting_audio_auto_buffer">Búfer de audio automático</string>
+    <string name="setting_audio_auto_buffer_desc">Ajusta el búfer de audio por software según la red y el rendimiento del dispositivo; el control indica cuánta fluctuación puede absorber</string>
+    <string-array name="audio_adaptive_step_names">
+        <item>Mínima latencia</item>
+        <item>Menor latencia</item>
+        <item>Equilibrado</item>
+        <item>Más estabilidad</item>
+        <item>Máxima estabilidad</item>
+    </string-array>
+    <string name="setting_audio_cushion_ms">Búfer de audio por software (ms)</string>
+    <string name="setting_audio_cushion_ms_desc">Absorbe la fluctuación de la red y del decodificador: menos tiempo, menos latencia; más tiempo, menos cortes</string>
+    <string name="setting_oboe_buffer_frames">Búfer de salida de hardware (fotogramas)</string>
+    <string name="setting_oboe_buffer_frames_desc">Búfer entre la app y el dispositivo de audio, solo para absorber retrasos de la CPU. Déjalo en 0 para el tamaño automático.</string>
+    <string name="setting_debug_overlay">Mostrar estadísticas en pantalla</string>
+    <string name="setting_debug_overlay_desc">Muestra datos del flujo sobre el vídeo: códec, FPS, tasa de bits, fluctuación, fotogramas, descartes</string>
+    <string name="setting_benchmark_log">Activar registro de depuración</string>
+    <string name="setting_benchmark_log_desc">Registra datos del flujo en logcat: códec, FPS, tasa de bits, fluctuación, fotogramas, descartes</string>
+
+    <!-- Debug overlay -->
+    <string name="debug_section_video">Vídeo</string>
+    <string name="debug_section_audio">Audio</string>
+    <string name="debug_section_network">Red</string>
+    <string name="debug_fps_bitrate" tools:ignore="PluralsCandidate">FPS: %1$d  Tasa: %2$s</string>
+    <string name="debug_frames_drops" tools:ignore="PluralsCandidate">Fotogramas: %1$d  Descartes: %2$d</string>
+    <string name="debug_jitter">Fluctuación: %1$s</string>
+    <string name="debug_audio">%1$s  Receptor: %2$d%%  Dispositivo: %3$d%%</string>
+    <string name="debug_audio_buffer">Búfer: %1$d ms (obj.: %2$d ms)</string>
+    <string name="debug_audio_glitch" tools:ignore="PluralsCandidate">Fallos: trim=%1$d drop=%2$d sil=%3$d ur=%4$d xrun=%5$d</string>
+    <string name="debug_audio_decode">Decodificación: %1$s</string>
+    <string name="debug_clients">Dispositivos: %1$d</string>
+    <string name="tracks_title">Audio y subtítulos</string>
+    <string name="tracks_audio">Audio</string>
+    <string name="tracks_subtitles">Subtítulos</string>
+    <string name="tracks_off">Desactivados</string>
+    <string name="tracks_untitled">Pista %1$d</string>
+    <string name="room_living">Sala</string>
+    <string name="room_bedroom">Dormitorio</string>
+    <string name="room_dining">Comedor</string>
+    <string name="room_office">Oficina</string>
+    <string name="tv_standby_menu_hint">Pulsa OK o Menú para los ajustes</string>
+    <string name="setting_ask_new_devices">Preguntar por dispositivos nuevos</string>
+    <string name="setting_ask_new_devices_desc">La primera vez que se conecta un dispositivo, permítelo en la TV y vuelve a conectar</string>
+    <string name="known_sender_allowed">Permitido. OK lo bloquea</string>
+    <string name="known_sender_blocked">Bloqueado. OK lo permite</string>
+    <string name="setting_forget_senders">Olvidar dispositivos</string>
+    <string name="setting_forget_senders_desc">Vacía esta lista; con Preguntar por dispositivos nuevos activado, se vuelve a preguntar por cada uno</string>
+    <string name="device_block">Bloquear</string>
+    <string name="device_request_title">«%1$s» quiere conectarse a esta TV</string>
+    <string name="device_request_help">Puedes cambiarlo después en Ajustes.</string>
+    <string name="device_request_allowed">«%1$s» está permitido</string>
+    <string name="device_request_try_again">Vuelve a conectar desde el dispositivo para empezar.</string>
+</resources>

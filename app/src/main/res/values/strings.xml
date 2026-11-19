@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="app_name">VireoAirTV</string>
+    <string name="app_name" translatable="false">VireoAirTV</string>
 
     <!-- Notification -->
     <string name="notification_channel">AirPlay Service</string>
@@ -50,7 +50,7 @@
     <string name="cd_fast_forward">Fast forward</string>
     <string name="volume_server">Receiver volume</string>
     <string name="volume_client">Sender volume</string>
-    <string name="volume_value">%1$d%%</string>
+    <string name="volume_value" translatable="false">%1$d%%</string>
     <string name="cd_download">Download video</string>
 
     <!-- Video download -->
@@ -62,7 +62,7 @@
         <item quantity="one">%1$d second</item>
         <item quantity="other">%1$d seconds</item>
     </plurals>
-    <string name="seconds_short">%1$ds</string>
+    <string name="seconds_short" translatable="false">%1$ds</string>
     <string name="select_playback_speed">Playback speed</string>
     <string name="cd_reset_speed">Reset speed</string>
     <string name="skip_silence">Skip silence</string>
@@ -78,7 +78,7 @@
     <string name="scale_best_fit">Best fit</string>
     <string name="scale_stretch">Stretch</string>
     <string name="scale_crop">Crop</string>
-    <string name="scale_hundred_percent">100%</string>
+    <string name="scale_hundred_percent" translatable="false">100%</string>
 
     <!-- Dialogs -->
     <string name="dialog_pin_title">AirPlay PIN</string>
@@ -183,9 +183,9 @@
     <string name="chip_device_landscape">Landscape</string>
 
     <!-- Settings: Decode -->
-    <string name="setting_h265">H.265 (HEVC)</string>
+    <string name="setting_h265" translatable="false">H.265 (HEVC)</string>
     <string name="setting_h265_desc">Auto only uses H.265 decoders known to work</string>
-    <string name="setting_enforce_sdr">MediaFormat.KEY_COLOR_TRANSFER</string>
+    <string name="setting_enforce_sdr" translatable="false">MediaFormat.KEY_COLOR_TRANSFER</string>
     <string name="setting_enforce_sdr_desc">Tag video as limited SDR; disable to allow HDR sources to pass through</string>
     <string name="setting_sw_alac">Force software ALAC decoder</string>
     <string name="setting_sw_alac_desc">Always use software ALAC decoder instead of system decoder, may affect latency</string>
@@ -197,11 +197,11 @@
     <!-- Settings: Developer -->
     <string name="setting_developer_options">Developer options</string>
     <string name="setting_developer_options_desc">Show options for advanced users</string>
-    <string name="setting_key_allow_frame_drop">MediaFormat.KEY_ALLOW_FRAME_DROP</string>
+    <string name="setting_key_allow_frame_drop" translatable="false">MediaFormat.KEY_ALLOW_FRAME_DROP</string>
     <string name="setting_key_allow_frame_drop_desc">Allow video decoders to drop frames internally to keep up on Android 10+</string>
-    <string name="setting_realtime_decoder_priority">MediaFormat.KEY_PRIORITY</string>
+    <string name="setting_realtime_decoder_priority" translatable="false">MediaFormat.KEY_PRIORITY</string>
     <string name="setting_realtime_decoder_priority_desc">Request real-time scheduling for audio decoder</string>
-    <string name="setting_operating_rate">MediaFormat.KEY_OPERATING_RATE</string>
+    <string name="setting_operating_rate" translatable="false">MediaFormat.KEY_OPERATING_RATE</string>
     <string name="setting_operating_rate_desc">Request maximum operating rate from decoder</string>
     <string name="chip_auto">Auto</string>
     <string name="chip_on">On</string>
@@ -212,10 +212,10 @@
     <string name="setting_scheduled_output_buffer_release_desc">Schedule each decoded frame to the VSYNC matching its presentation timestamp</string>
     <string name="setting_audio_delay">Override audio delay</string>
     <string name="setting_audio_delay_desc">Set a custom audio latency reported to sender</string>
-    <string name="audio_delay_value">%dms</string>
+    <string name="audio_delay_value" translatable="false">%dms</string>
     <string name="setting_audio_auto_buffer">Automatic software audio buffer size</string>
     <string name="setting_audio_auto_buffer_desc">Adaptively tune the software audio buffer according to network conditions and device performance; slider adjusts how much jitter the buffer can absorb</string>
-    <string name="audio_adaptive_value">%1$d%% (%2$s)</string>
+    <string name="audio_adaptive_value" translatable="false">%1$d%% (%2$s)</string>
     <string-array name="audio_adaptive_step_names">
         <item>Lowest Latency</item>
         <item>Lower Latency</item>
@@ -236,7 +236,7 @@
     <string name="debug_section_video">Video</string>
     <string name="debug_section_audio">Audio</string>
     <string name="debug_section_network">Network</string>
-    <string name="debug_video">%1$s %2$s</string>
+    <string name="debug_video" translatable="false">%1$s %2$s</string>
     <string name="debug_fps_bitrate" tools:ignore="PluralsCandidate">FPS: %1$d  Bitrate: %2$s</string>
     <string name="debug_frames_drops" tools:ignore="PluralsCandidate">Frames: %1$d  Drops: %2$d</string>
     <string name="debug_jitter">Jitter: %1$s</string>
@@ -261,7 +261,6 @@
     <string name="known_sender_blocked">Blocked. OK allows it</string>
     <string name="setting_forget_senders">Forget devices</string>
     <string name="setting_forget_senders_desc">Clears this list; with Ask for new devices on, each one is asked about again</string>
-    <string name="device_allow">Allow</string>
     <string name="device_block">Block</string>
     <string name="device_request_title">“%1$s” wants to connect to this TV</string>
     <string name="device_request_help">You can change this later in Settings.</string>
