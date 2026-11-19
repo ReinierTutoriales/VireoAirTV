@@ -80,7 +80,7 @@ Línea base medida en `0.0.7`:
 | `910320e` | Reenviar superficies activas al enlazar el servicio (`MainViewModel`) | Si `VideoSurfaceView` entregaba su `Surface` con `service == null`, se descartaba y el video decodificaba en negro hasta reconectar |
 | `f86b33a` | Apagar `_audioOnly` al iniciar video y priorizar video sobre carátula (`AirPlayService`, `MainScreen`) | Al abrir un video en Safari viniendo de música, la pantalla quedaba fija en la carátula anterior hasta desconectar AirPlay |
 | `ba32661` | Overlay nativo de TV: transporte central (`-10s`, Play/Pausa, `+10s`, Anterior/Siguiente si hay DACP), degradados y ocultado de botones de móvil en TV (`VideoControls`, `MainScreen`) | En TV el overlay mostraba botones de teléfono (Rotar, Bloquear táctil, Copiar URL, Descargar, PiP) y solo un botón central de Play/Pausa |
-| `8e8c006` | Omitir `Modifier.blur(48.dp)` a pantalla completa en TV en `ArtworkBackdrop` (`Motion`) | El bitmap ya se escala desde `24×24 px` con `FilterQuality.High`; evita la pasada de blur 1080p en GPU (línea base `97.9 MB` EGL, `21.60%` jank) |
+| `8e8c006` | Omitir `Modifier.blur(48.dp)` a pantalla completa en TV en `ArtworkBackdrop` (`Motion`) | El bitmap ya se escala desde `24×24 px` con `FilterQuality.High`; evita la pasada de blur 1080p en GPU (línea base `97.9 MB` EGL, `21.60%` jank). **Revertido en `b35b5f1`**: baja la calidad de imagen y no se midió la ganancia |
 | `546d4a6` | Reactivar mirroring al llegar `onVideoData` y limpiar `_videoSessionPending` al volver de video (`AirPlayService`, `MainViewModel`) | Al salir de un video hacia el escritorio del iPhone la UI quedaba retenida en estado pendiente en lugar de retomar el espejo |
 | `712b6c6` | Permitir redirecciones HTTP entre protocolos (`http` ↔ `https`) en `AirPlayVideoPlayer` | Sitios web en Safari fuera de YouTube suelen redirigir entre esquemas y ExoPlayer bloquea esas redirecciones por defecto |
 
@@ -89,4 +89,15 @@ Pendiente de compilación y validación física tras instalar el APK de `develop
 - Medir de nuevo `meminfo` y `gfxinfo` en el `onn 4K` para confirmar el efecto real de `8e8c006`.
 - Parche nativo pendiente en entorno con submódulo `UxPlay` + NDK: `app/src/main/cpp/patches/UxPlay/0013` (`lib/httpd.c`, `timeout_limit = 60` corta sesiones HLS a los 60 s) y revisión de `hls_get_current_video: failed to identify current_playlist` observado en logcat.
 
+### Revisión de esta tanda (2026-11-18)
+
+Compilado y probado en Linux sobre `963f8f7`: `assembleDebug`, `lintDebug`, `testDebugUnitTest` y `scripts/native-regress.sh` pasan.
+
+- `0f37315`: con el servidor activo, OK en la pantalla de espera abría el menú con el foco en Detener, y un segundo OK apagaba el servidor. El foco va ahora a la pestaña Resumen. El test `menuDoesNotLandOnStop` falló antes del cambio.
+- `b35b5f1`: se revierte `8e8c006` (ver la tabla).
+- `712b6c6`: `setAllowCrossProtocolRedirects(true)` también permite bajar de `https` a `http`. Media3 lo trae desactivado por ese motivo, y el commit no cita ninguna URL que fallara. Se mantiene hasta tener un caso real; si no aparece, se revierte.
+- `b72b131`: al cambiar de pista, `onMetadata` borra la carátula. Si un emisor manda la carátula de la pista nueva antes que sus metadatos, esa pista se queda sin carátula. No hay registro que muestre ese orden; hay que comprobarlo en el TV.
+- `546d4a6`: `onVideoData` vuelve a marcar el mirroring como activo. UxPlay llama a `mirror_video_running(false)` al final del mismo hilo que entrega los frames (`raop_rtp_mirror.c`), así que ningún frame tardío puede reactivarlo después de cerrar.
+- `hls_get_current_video: failed to identify current_playlist` aparece justo antes de `AirPlay Video stopped`. `current_video` solo vuelve a `-1` con `playlistRemove` o al cerrar la conexión, así que el error parece una consecuencia del cierre que pide el emisor, no su causa. Falta el logcat completo para ver qué petición llega antes.
+- `timeout_limit = 60` (`httpd.c`, igual en UxPlay upstream) cierra cualquier conexión sin tráfico durante 60 s, incluida la de eventos (`EVENT`). Las sesiones del registro duraron 5 s y 132 s, no 60 s, así que este límite no explica esos cortes. El logcat completo diría si aparece `httpd closing dead connection`.
 
