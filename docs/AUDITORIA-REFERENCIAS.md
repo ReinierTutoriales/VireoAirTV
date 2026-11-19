@@ -211,6 +211,14 @@ Revisión del diff `main..develop` y análisis estático (cppcheck 2.22) del có
 - Audio: un FLUSH pendiente se descarta cuando la salida se reinicia con el buffer ya vacío.
 - Restos de cppcheck sin efecto práctico: tipos de `printf`, comprobaciones de `malloc` en `srp.c` y `utils.c`.
 
+## Décima pasada: fuentes al 2026-11-19 (rama `develop`)
+- UxPlay `master` sigue en `48f5ce4`; jqssun sin cambios desde `a46cca0`. Issues abiertos de UxPlay revisados: #642 (aserción de idioma con `-hls`) no aplica, porque el idioma lo pasa la app.
+- reditor (`tanxxjun321/reditor`, receptor UxPlay para macOS) `918282e`: con el bit 27 de features (emparejamiento heredado) anunciado, iOS espera unos 5 s antes de conectar (UxPlay #176). Nosotros lo anunciábamos siempre; ahora solo con PIN, como `uxplay.cpp`.
+- reditor `ecd6d78` (anunciar tamaño real de pantalla y 60 fps) y `f78fc6e` (volumen a −30 dB al cerrar): ya cubiertos aquí.
+- CastBay `8edbc8a`: posición de directos creciente y sin duración. Portado.
+- CastBay `fb54aa7`/`8834aef` (tope del búfer HLS según el heap): solo cambia algo con heaps de menos de 128 MB; los TV tienen más. `b9c8737`, `93852d7`, `1f99906`: dependen de su arquitectura (DLNA, escritorio, arranque del servicio). `a72083f` (pantalla encendida): ya lo hacemos (`KEEP_SCREEN_ON`, activo por defecto).
+- Issues abiertos de VireoAirTV: ninguno.
+
 ## Dependencias (comprobado 2026-11-18 contra Google Maven, Maven Central y los repositorios oficiales)
 Al día con la última versión estable: AGP 9.5.1, Gradle 9.9.1, Kotlin 2.4.21, KSP 2.3.14, Compose BOM
 2026.09.00, Hilt 2.60.1, hilt-navigation 1.4.0, lifecycle 2.11.0, activity 1.13.0, core-ktx 1.19.1,
