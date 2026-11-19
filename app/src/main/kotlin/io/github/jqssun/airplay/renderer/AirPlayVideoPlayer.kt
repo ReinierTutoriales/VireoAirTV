@@ -223,6 +223,7 @@ class AirPlayVideoPlayer(private val context: Context) {
             it.release()
         }
         player = null
+        liveOriginMs = null
         onCues?.invoke("")
         onTracksChanged?.invoke()
         // duration=-1 is the "video finished" sentinel for the playback-info handler
@@ -234,9 +235,12 @@ class AirPlayVideoPlayer(private val context: Context) {
     private fun _reportPlaybackInfo() {
         val p = player ?: return
         val durationMs = p.duration
-        val position = p.currentPosition / 1000f
-        // 0 = live/unknown (TIME_UNSET); a real value only exists for vod
-        val duration = if (durationMs == C.TIME_UNSET) 0f else durationMs / 1000f
+        val live = p.isCurrentMediaItemLive
+        // a live stream's duration is only the window it keeps and its position runs back each time the
+        // window slides, so the sender saw a short video that kept jumping backwards (CastBay 8edbc8a).
+        // Tell it no duration (0 = live/unknown) and a position that only grows.
+        val position = if (live) _livePositionSeconds(p) else p.currentPosition / 1000f
+        val duration = if (live || durationMs == C.TIME_UNSET) 0f else durationMs / 1000f
         val rate = if (p.playWhenReady && p.playbackState == Player.STATE_READY) p.playbackParameters.speed else 0f
         // readyToPlay = the timeline is established, NOT exoplayer's buffering state: for vod that means the duration is known; for live there is no duration so being playable is enough. the sender holds its timeline (and /play) until this, so it must not go true early
         val ready = if (p.isCurrentMediaItemLive) p.playbackState == Player.STATE_READY
@@ -253,6 +257,18 @@ class AirPlayVideoPlayer(private val context: Context) {
                 buffering = p.playbackState == Player.STATE_BUFFERING,
             )
         )
+    }
+
+    // where the live window started when first reported (main thread only); reset per player
+    private var liveOriginMs: Long? = null
+
+    private fun _livePositionSeconds(p: ExoPlayer): Float {
+        val timeline = p.currentTimeline
+        if (timeline.isEmpty) return p.currentPosition / 1000f
+        val window = timeline.getWindow(p.currentMediaItemIndex, androidx.media3.common.Timeline.Window())
+        val absoluteMs = p.currentPosition + window.positionInFirstPeriodUs / 1000
+        val origin = liveOriginMs ?: absoluteMs.also { liveOriginMs = it }
+        return (absoluteMs - origin) / 1000f
     }
 
     companion object {
