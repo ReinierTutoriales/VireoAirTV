@@ -10,6 +10,8 @@ UxPlay patch 0046 adds `lib/fairplay_v2/` by Omar Roth (LGPL-2.1-or-later), merg
 
 `renderer/HevcSelfTest.kt` with `app/src/main/assets/hevc_selftest.h265`, and `renderer/MediaTracks.kt`, are ported from [CastBay](https://github.com/weenas/castbay) by Weenas (GPL-3.0): `service/HevcSelfTest.kt` with its asset and `service/MediaTracks.kt`.
 
+`discovery/own/MdnsZone.kt` and `discovery/own/MdnsResponder.kt` (with `MdnsZoneTest.kt`) are ported from CastBay's `service/MdnsZone.kt` and `service/MdnsResponder.kt` (commit `df132a3`). `service/AudioFocus.kt`, the screen-saver wake in `AirPlayService`, and the live-stream position in `AirPlayVideoPlayer` follow CastBay's `AudioFocus.kt`, `ScreenLauncher.kt` and commit `8edbc8a`.
+
 ## Agent tooling
 
 `.agents/skills/no-ai-slop/` is an unmodified copy of the no-ai-slop skill by Peter Yang, used by contributors' agents to edit prose. It is not part of the app.
