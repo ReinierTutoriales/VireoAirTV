@@ -39,8 +39,8 @@ android {
         applicationId = "com.reiniertutoriales.vireoairtv"
         minSdk = 24
         targetSdk = 37
-        versionCode = 10
-        versionName = "0.0.10"
+        versionCode = 11
+        versionName = "0.0.11"
 
         externalNativeBuild {
             cmake {
