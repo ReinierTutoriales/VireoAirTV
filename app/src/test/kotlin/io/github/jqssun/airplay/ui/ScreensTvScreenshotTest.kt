@@ -130,6 +130,21 @@ class ScreensTvScreenshotTest {
         save("tv_logs")
     }
 
+    // ↓ during mirroring shows the stream's stats, ↑ hides them
+    @Test fun mirroringStats() {
+        set("_serverState", ServerState.RUNNING); set("_connectionCount", 1); set("_mirroringActive", true)
+        set("_debugInfo", io.github.jqssun.airplay.viewmodel.DebugInfo(videoCodec = "H.264", videoRes = "1920x884", videoFps = 60, connections = 1))
+        render()
+        compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionDown) }
+        compose.waitForIdle()
+        compose.onNodeWithText("VIDEO").assertExists()
+        org.junit.Assert.assertTrue(vm.statsVisible)
+        save("tv_mirroring_stats")
+        compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionUp) }
+        compose.waitForIdle()
+        compose.onNodeWithText("VIDEO").assertDoesNotExist()
+    }
+
     @Test fun pinOverPicture() {
         set("_serverState", ServerState.RUNNING); set("_connectionCount", 1); set("_pinCode", "4821")
         render(receiverOnly = true); save("tv_pin_receiver_only")

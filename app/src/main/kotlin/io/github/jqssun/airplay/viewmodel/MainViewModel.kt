@@ -144,6 +144,9 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     private val _debugInfo = MutableStateFlow(DebugInfo())
     val debugInfo: StateFlow<DebugInfo> = _debugInfo.asStateFlow()
 
+    /** The stats shown from the remote during mirroring; collected only while they are on screen. */
+    @Volatile var statsVisible = false
+
     private val _localNetwork = MutableStateFlow(LocalNetworkAccess.GRANTED)
     val localNetwork: StateFlow<LocalNetworkAccess> = _localNetwork.asStateFlow()
     fun setLocalNetwork(v: LocalNetworkAccess) { _localNetwork.value = v }
@@ -591,7 +594,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         _videoSessionPending.value = it.videoSessionPending()
         _clientVolume.value = it.clientVolume()
         _clientVolumeAdjustable.value = it.dacpController?.ready == true
-        if (pref(Prefs.DEBUG_ENABLED).value) {
+        if (pref(Prefs.DEBUG_ENABLED).value || statsVisible) {
             _debugInfo.value = it.collectDebugInfo()
         }
     }

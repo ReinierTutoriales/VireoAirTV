@@ -1011,6 +1011,14 @@ private fun FullscreenVideo(
     }
     val focus = remember { FocusRequester() }
     if (quiet) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // ↓ or Info on the remote shows the stream's stats (fps, drops, bitrate, codec) without going to
+    // Settings; ↑ or Back hides them
+    var statsShown by remember { mutableStateOf(false) }
+    DisposableEffect(statsShown) {
+        viewModel.statsVisible = statsShown
+        onDispose { viewModel.statsVisible = false }
+    }
+    if (statsShown) BackHandler { statsShown = false }
 
     Box(
         modifier = Modifier
@@ -1027,6 +1035,9 @@ private fun FullscreenVideo(
                     Key.MediaPrevious -> send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious)
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter ->
                         quiet && !controlsVisible && toggle()
+                    Key.Info -> { statsShown = !statsShown; true }
+                    Key.DirectionDown -> (quiet && !controlsVisible && !statsShown).also { if (it) statsShown = true }
+                    Key.DirectionUp -> statsShown.also { statsShown = false }
                     else -> false
                 }
             }
@@ -1054,8 +1065,8 @@ private fun FullscreenVideo(
                 }
             }
         }
-        if (debugEnabled) {
-            DebugOverlay(debugInfo, Modifier.align(Alignment.TopStart).padding(8.dp))
+        if (debugEnabled || statsShown) {
+            DebugOverlay(debugInfo, Modifier.align(Alignment.TopStart).padding(if (statsShown) 32.dp else 8.dp), large = statsShown)
         }
         var showRes by remember { mutableStateOf(false) }
         LaunchedEffect(videoResolution) {
@@ -1467,14 +1478,15 @@ private const val CLIENT_VOLUME_STEP = 1f / 16
 private const val VIDEO_OVERLAY_HIDE_MS = 4000L
 
 @Composable
-private fun DebugOverlay(info: DebugInfo, modifier: Modifier = Modifier) {
+private fun DebugOverlay(info: DebugInfo, modifier: Modifier = Modifier, large: Boolean = false) {
     Column(
         modifier = modifier
             .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        val style = MaterialTheme.typography.labelSmall
+        // read from the sofa when asked for from the remote; small when it is the always-on debug overlay
+        val style = if (large) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall
         val headingStyle = style.copy(fontWeight = FontWeight.Bold)
         val color = Color.White.copy(alpha = 0.9f)
         val headingColor = Color(0xFF80D8FF) // cyan
