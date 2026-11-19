@@ -76,6 +76,7 @@ import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
@@ -636,9 +637,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         videoRenderer.release()
         airPlayVideoPlayer.stop()
         _setSessionActive(false)
-        _audioOnly.value = false
-        _videoPlaybackActive.value = false
-        _mirroringActive.value = false
+        _transition(SessionEvent.ServerStopped)
         _mirrorSize.value = null
         _videoPlaybackInfo.value = VideoPlaybackInfo()
         _lastVideoPollAt = 0
@@ -714,7 +713,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // lingering polls after a stop must not bounce the UI back to a pending session
         _videoPollSuppressed = true
         _videoHandoffUntil = if (handoff) SystemClock.elapsedRealtime() + VIDEO_HANDOFF_GRACE_MS else 0L
-        _videoPlaybackActive.value = false
+        _transition(SessionEvent.VideoEnded)
         airPlayVideoPlayer.stop()
         if (!_audioOnly.value) _setSessionActive(false)
         log(message)
@@ -745,10 +744,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     // RaopCallbackHandler (called from native threads)
 
     override fun onVideoData(data: ByteArray, ntpTimeNs: Long, isH265: Boolean) {
-        if (!_mirroringActive.value) {
-            if (_audioOnly.value) _setAudioOnly(false)
-            _mirroringActive.value = true
-        }
+        if (!_session.value.mirroring) _transition(SessionEvent.MirrorStarted)
         videoRenderer.feedFrame(data, ntpTimeNs, isH265)
     }
 
@@ -757,7 +753,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onVideoPlay(location: String, startPositionSeconds: Float) {
-        if (_audioOnly.value) _setAudioOnly(false)
         _videoLocation.value = location
         _videoPlaySeq.value++
         _videoPollSuppressed = false
@@ -767,7 +762,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackSize.value = null
         _videoFrameShown.value = false
         _videoTitle.value = ""
-        _videoPlaybackActive.value = true
+        _transition(SessionEvent.VideoStarted)
         _launchForContent()
         airPlayVideoPlayer.play(location, startPositionSeconds)
         // claim media-button routing for keys that arrive as media-session events
@@ -794,25 +789,19 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _localPauseAt = Long.MIN_VALUE / 2
             _setPlaying(true)
         }
-        if (usingScreen) {
-            if (_audioOnly.value) _setAudioOnly(false)
-        } else if (!_audioOnly.value && !_mirroringActive.value && !_videoPlaybackActive.value) {
-            // pure music streaming (not screen mirroring audio)
-            _setAudioOnly(true)
-        }
+        _transition(SessionEvent.AudioStarted(screen = usingScreen))
         log("Audio format: ct=$ct spf=$spf screen=$usingScreen")
     }
 
     override fun onVideoSize(srcW: Float, srcH: Float, w: Float, h: Float) {
         clearPin()
         if (w > 0 && h > 0) {
-            if (_audioOnly.value) _setAudioOnly(false)
             _videoAspect.value = w / h
             _videoResolution.value = "${w.toInt()}x${h.toInt()}"
             videoRenderer.setResolution(w.toInt(), h.toInt())
             _mirrorSize.value = w.toInt() to h.toInt()
-            if (!_mirroringActive.value) _launchForContent()
-            _mirroringActive.value = true
+            if (!_session.value.mirroring) _launchForContent()
+            _transition(SessionEvent.MirrorStarted)
         }
         log("Video size: ${srcW}x${srcH} -> ${w}x${h}")
     }
@@ -914,6 +903,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     override fun onConnectionInit() {
         _lastFeedbackNs = System.nanoTime()
         _connectionCount.value++
+        _transition(SessionEvent.Connected)
         log("Sender connected (${_connectionCount.value})")
     }
 
@@ -924,7 +914,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _endVideoPlayback("AirPlay Video stopped (disconnect)")
             // last client gone: release audio output devices to save power
             audioRenderer.stop()
-            _audioOnly.value = false
+            _transition(SessionEvent.Disconnected)
             _lastVideoPollAt = 0
             _videoPollSuppressed = false
             _videoHandoffUntil = 0L
@@ -1057,6 +1047,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onAudioTeardown() {
+        _transition(SessionEvent.AudioEnded)
         _setPlaying(false)
     }
 
@@ -1068,27 +1059,41 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     override fun onMirrorRunning(running: Boolean) {
         if (running) videoRenderer.startSession() else {
             videoRenderer.stopSession()
-            _mirroringActive.value = false
             _mirrorSize.value = null
+            _transition(SessionEvent.MirrorStopped)
         }
-        if (running) _setAudioOnly(false) else if (!_videoPlaybackActive.value) _setAudioOnly(true)
     }
 
-    private fun _setAudioOnly(audioOnly: Boolean) {
-        val prev = _audioOnly.value
-        _audioOnly.value = audioOnly
-        _refreshDacpPlayer()
-        if (audioOnly && !prev) {
-            _setSessionActive(true)
-            log("Audio mode")
-        } else if (!audioOnly && prev) {
-            _setSessionActive(false)
-            _coverArtBytes = null
-            _trackInfo.value = TrackInfo()
-            _positionMs.value = 0
-            _durationMs.value = 0
-            _updateMediaNotification()
-            log("Mirror mode")
+    private val _session = MutableStateFlow(Session())
+    val session: StateFlow<Session> = _session.asStateFlow()
+
+    // native callbacks arrive on several threads: each event is applied to the latest session, once
+    private fun _transition(event: SessionEvent) {
+        val prev: Session
+        val next: Session
+        synchronized(_session) {
+            prev = _session.value
+            next = prev.on(event)
+            _session.value = next
+            // the older flows stay, derived here, until every reader uses [session]
+            _mirroringActive.value = next.mirroring
+            _videoPlaybackActive.value = next.video
+            _audioOnly.value = next.music
+        }
+        if (prev == next) return
+        if (prev.screen != next.screen) log("Session: ${prev.screen} -> ${next.screen} ($event)")
+        if (next.music != prev.music) {
+            _refreshDacpPlayer()
+            if (next.music) {
+                _setSessionActive(true)
+            } else {
+                _setSessionActive(false)
+                _coverArtBytes = null
+                _trackInfo.value = TrackInfo()
+                _positionMs.value = 0
+                _durationMs.value = 0
+                _updateMediaNotification()
+            }
         }
     }
 
