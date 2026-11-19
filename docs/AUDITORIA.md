@@ -82,6 +82,7 @@ Línea base medida en `0.0.7`:
 | `ba32661` | Overlay nativo de TV: transporte central (`-10s`, Play/Pausa, `+10s`, Anterior/Siguiente si hay DACP), degradados y ocultado de botones de móvil en TV (`VideoControls`, `MainScreen`) | En TV el overlay mostraba botones de teléfono (Rotar, Bloquear táctil, Copiar URL, Descargar, PiP) y solo un botón central de Play/Pausa |
 | `8e8c006` | Omitir `Modifier.blur(48.dp)` a pantalla completa en TV en `ArtworkBackdrop` (`Motion`) | El bitmap ya se escala desde `24×24 px` con `FilterQuality.High`; evita la pasada de blur 1080p en GPU (línea base `97.9 MB` EGL, `21.60%` jank) |
 | `546d4a6` | Reactivar mirroring al llegar `onVideoData` y limpiar `_videoSessionPending` al volver de video (`AirPlayService`, `MainViewModel`) | Al salir de un video hacia el escritorio del iPhone la UI quedaba retenida en estado pendiente en lugar de retomar el espejo |
+| `712b6c6` | Permitir redirecciones HTTP entre protocolos (`http` ↔ `https`) en `AirPlayVideoPlayer` | Sitios web en Safari fuera de YouTube suelen redirigir entre esquemas y ExoPlayer bloquea esas redirecciones por defecto |
 
 Pendiente de compilación y validación física tras instalar el APK de `develop`:
 - Ejecutar `./gradlew assembleDebug testDebugUnitTest lintDebug` y `./scripts/native-regress.sh` en CI o entorno con Android SDK/NDK.
