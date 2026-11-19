@@ -174,10 +174,13 @@ private fun MainScreenContent(
         }
     }
 
-    // on TV keep playback full screen unless the user explicitly backed out during this session;
-    // avoids flashing the app UI when a sender switches between HLS video and RAOP audio
+    // on TV the receiver stays clean (no tabs or Stop button) unless the user opens the tool menu
     var userExitedFullscreen by remember { mutableStateOf(false) }
     val tv = isTv()
+    var showToolUi by remember(tv) { mutableStateOf(!tv) }
+    val serverState by viewModel.serverState.collectAsState()
+    val localNetwork by viewModel.localNetwork.collectAsState()
+    val serverName by viewModel.pref(Prefs.SERVER_NAME).collectAsState()
     LaunchedEffect(mirroringActive, audioOnly, videoPlaybackActive, connections, pin) {
         if (connections == 0) {
             // brief dip between tracks or apps must not flash the app UI; exit only if still idle
@@ -191,15 +194,17 @@ private fun MainScreenContent(
             (audioOnly && (autoFullscreen || tv))
         if (wantsFullscreen && !userExitedFullscreen) {
             fullscreen = true
+            if (tv) showToolUi = false
         }
     }
 
     val activity = LocalActivity.current
     val videoScreen = videoPlaybackActive || videoSessionPending
-    LaunchedEffect(fullscreen, videoScreen, receiverOnly, pin != null) {
+    val hideSystemBars = fullscreen || videoScreen || receiverOnly || pin != null || (tv && !showToolUi)
+    LaunchedEffect(hideSystemBars) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        if (fullscreen || videoScreen || receiverOnly || pin != null) {
+        if (hideSystemBars) {
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
@@ -621,6 +626,7 @@ private fun MainScreenContent(
         BackHandler {
             userExitedFullscreen = true
             fullscreen = false
+            if (tv) showToolUi = true
         }
         if (audioOnly && connections > 0) {
             // Back leaves through the BackHandler above; the screen itself has no buttons to exit
@@ -632,14 +638,50 @@ private fun MainScreenContent(
                 onExitFullscreen = {
                     userExitedFullscreen = true
                     fullscreen = false
+                    if (tv) showToolUi = true
                 },
-                onPip = onPip
+                onPip = onPip,
+                quiet = tv
             )
         } else {
             // between tracks or video items, hold black instead of flashing the app UI
             Box(Modifier.fillMaxSize().background(Color.Black))
         }
+    } else if (tv && !showToolUi) {
+        when {
+            audioOnly && connections > 0 -> {
+                BackHandler {
+                    userExitedFullscreen = true
+                    showToolUi = true
+                }
+                NowPlayingTvScreen(viewModel)
+            }
+            mirroringActive -> {
+                BackHandler {
+                    userExitedFullscreen = true
+                    showToolUi = true
+                }
+                FullscreenVideo(
+                    viewModel = viewModel,
+                    video = video,
+                    onExitFullscreen = {
+                        userExitedFullscreen = true
+                        showToolUi = true
+                    },
+                    onPip = onPip,
+                    quiet = true
+                )
+            }
+            else -> TvStandbyScreen(
+                serverName = serverName,
+                state = serverState,
+                needsLocalNetwork = serverState != ServerState.RUNNING && localNetwork != LocalNetworkAccess.GRANTED,
+                onOpenMenu = { showToolUi = true },
+                onGrantLocalNetwork = onLocalNetwork,
+            )
+        }
     } else {
+        if (tv) BackHandler { showToolUi = false }
         Scaffold(
             bottomBar = {
                 Column {
@@ -668,6 +710,7 @@ private fun MainScreenContent(
                     onFullscreen = {
                         userExitedFullscreen = false
                         fullscreen = true
+                        if (tv) showToolUi = false
                     },
                     onPip = onPip, onLocalNetwork = onLocalNetwork,
                     showAudioMode = audioOnly

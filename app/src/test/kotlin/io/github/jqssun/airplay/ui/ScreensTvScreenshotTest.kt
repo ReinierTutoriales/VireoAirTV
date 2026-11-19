@@ -90,14 +90,26 @@ class ScreensTvScreenshotTest {
         render(); save("tv_music")
     }
 
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+    private fun openToolMenu() {
+        compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.Menu) }
+        compose.waitForIdle()
+    }
+
     @Test fun settings() {
-        render { compose.onNodeWithText("Settings").performClick() }
+        render {
+            openToolMenu()
+            compose.onNodeWithText("Settings").performClick()
+        }
         save("tv_settings")
     }
 
     @Test fun logs() {
         vm.addLog("Server started on port 7000"); vm.addLog("Client connected: iPhone")
-        render { compose.onNodeWithText("Logs").performClick() }
+        render {
+            openToolMenu()
+            compose.onNodeWithText("Logs").performClick()
+        }
         save("tv_logs")
     }
 

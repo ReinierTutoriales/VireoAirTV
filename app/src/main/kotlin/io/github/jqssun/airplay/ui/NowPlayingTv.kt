@@ -106,13 +106,22 @@ fun NowPlayingTv(
     playPauseFocus: FocusRequester = remember { FocusRequester() },
 ) {
     BoxWithConstraints(modifier.fillMaxSize().background(Color.Black)) {
-        ArtworkBackdrop(state.artwork, Modifier.fillMaxSize())
-        // a soft vignette keeps white text readable over bright artwork
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.45f))))
-        )
+        if (state.artwork != null) {
+            ArtworkBackdrop(state.artwork, Modifier.fillMaxSize())
+            // a soft vignette keeps white text readable over bright artwork
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.45f))))
+            )
+        } else {
+            // subtle ambient backdrop for audio apps that do not send cover art over RAOP
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(Color(0xFF1A1E2E), Color(0xFF0A0B10))))
+            )
+        }
 
         // tvOS safe area is about 5 % of each side; the artwork takes a bit over half the height
         val art = min(maxHeight * 0.56f, maxWidth * 0.36f)
