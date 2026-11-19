@@ -1,0 +1,31 @@
+From 6ac40887baf59f4f1b1fa95a486c8828964d0689 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 22:06:21 -0500
+Subject: [PATCH] httpd: do not time out the reverse-HTTP event channel
+
+The 60 s idle timeout also closed the EVENT connection. Once the FCUP playlist requests are done, the client sends nothing on it, so it is idle by design while the video plays. YouTube in FCUP mode (localhost:7000/master.m3u8) stopped at 60.095 s on an onn 4K.
+---
+ lib/httpd.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/lib/httpd.c b/lib/httpd.c
+index 9e94b01..47b8a2b 100644
+--- a/lib/httpd.c
++++ b/lib/httpd.c
+@@ -414,7 +414,12 @@ httpd_thread(void *arg)
+                 httpd_remove_connection(httpd, connection, 0);
+                 continue;
+             }
+-            if (now - connection->last_active > timeout_limit) {
++            /* the reverse-HTTP (EVENT) channel carries requests from server to client: the client only
++               answers them, so after the FCUP playlist requests it is silent by design while the video
++               plays. Closing it ends the sender's session (YouTube stops after 60 s). It is removed with
++               the HLS session (raop_remove_hls_connections) or when the client closes it. */
++            if (connection->type != CONNECTION_TYPE_EVENT &&
++                now - connection->last_active > timeout_limit) {
+                 logger_log(httpd->logger, LOGGER_WARNING,
+                            "httpd closing dead connection on socket %d after timeout_limit = %d seconds of inactivity",
+                             connection->socket_fd, timeout_limit);
+-- 
+2.43.0
+
