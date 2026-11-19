@@ -116,7 +116,7 @@ class AirPlayVideoPlayer(private val context: Context) {
             .setMediaSourceFactory(mediaSourceFactory)
             .build().also {
             it.addListener(_listener)
-            pendingSurface?.let { s -> it.setVideoSurface(s) }
+            pendingSurface?.takeIf { s -> s.isValid }?.let { s -> it.setVideoSurface(s) }
             it.volume = clientGain
         }
         player = p
@@ -184,16 +184,23 @@ class AirPlayVideoPlayer(private val context: Context) {
         p.seekTo(target)
     }
 
-    fun setSurface(surface: Surface) = mainHandler.post {
+    private inline fun _runOnMain(crossinline block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else mainHandler.post { block() }
+    }
+
+    // run synchronously on the main thread so SurfaceHolder.Callback.surfaceDestroyed never returns
+    // while MediaCodec is still rendering to the dying surface (avoids CodecException on Realtek SoCs)
+    fun setSurface(surface: Surface) = _runOnMain {
+        if (!surface.isValid) return@_runOnMain
         pendingSurface = surface
         player?.setVideoSurface(surface)
     }
 
     // no-op if a newer surface already replaced this one
-    fun clearSurface(surface: Surface) = mainHandler.post {
-        if (pendingSurface !== surface) return@post
-        pendingSurface = null
-        player?.setVideoSurface(null)
+    fun clearSurface(surface: Surface) = _runOnMain {
+        if (pendingSurface === surface) pendingSurface = null
+        player?.clearVideoSurface(surface)
     }
 
     fun stop() = mainHandler.post { _stopInternal(reportStopped = true) }
