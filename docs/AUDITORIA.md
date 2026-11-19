@@ -43,8 +43,8 @@ Fecha: 2026-11-16 · Commit base: `a46cca0` (v0.0.36)
 | 2. Sin `NetworkCallback` | Resuelta (`b098567`) |
 | 3. Sin reintento NSD | Resuelta (`7270103`) |
 | 4. "Abrir al conectar" sin overlay | Notificación con acción si falta `SYSTEM_ALERT_WINDOW` y scripts `scripts/provision.*` |
-| 5. Watchdog del motor nativo | Pendiente: requiere un cuelgue reproducido |
-| 6. Dispositivos de confianza | Pendiente: decisión de producto |
+| 5. Watchdog del motor nativo | Pendiente: requiere un cuelgue reproducido. Desde `c64f614` los avisos nativos llegan a logcat y desde `4dc546d` cada cambio de sesión queda registrado, lo que ayuda a detectar el cuelgue |
+| 6. Dispositivos de confianza | Parcial: `TrustedClients` guarda las claves de los emisores que pasaron el PIN (no se vuelve a pedir) y Ajustes tiene "Olvidar dispositivos emparejados". Falta la revocación individual por dispositivo |
 
 Otros cambios verificados: dependencias y toolchain a la última estable, sesión multimedia migrada a Media3, `DmapParser` con límite de profundidad (entrada de red), DACP con `ServiceInfoCallback` en API 34+, lint en 0 errores con pruebas JVM en CI. Todo pendiente de validación física en TV.
 
