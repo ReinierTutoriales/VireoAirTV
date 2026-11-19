@@ -993,7 +993,17 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     override fun onMetadata(data: ByteArray) {
         val map = DmapParser.parse(data)
-        val info = TrackInfo.fromDmap(map, _trackInfo.value.coverArt)
+        val parsed = TrackInfo.fromDmap(map, null)
+        // some senders emit an empty DMAP frame on transitions; ignore it instead of wiping current metadata
+        if (parsed.title.isEmpty() && parsed.artist.isEmpty() && parsed.album.isEmpty()) return
+        val prev = _trackInfo.value
+        val sameTrack = parsed.title == prev.title && parsed.artist == prev.artist && parsed.album == prev.album
+        val info = if (sameTrack) {
+            parsed.copy(coverArt = prev.coverArt)
+        } else {
+            _coverArtBytes = null
+            parsed
+        }
         _trackInfo.value = info
         if (info.durationMs > 0) _durationMs.value = info.durationMs
         _updateMediaMetadata()

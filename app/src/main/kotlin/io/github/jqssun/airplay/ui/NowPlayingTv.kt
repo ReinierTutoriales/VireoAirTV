@@ -242,7 +242,7 @@ private fun NowPlayingArt(artwork: Bitmap?, modifier: Modifier) {
             .background(Color(0xFF2C2C2E)),
         contentAlignment = Alignment.Center,
     ) {
-        Crossfade(artwork, animationSpec = tween(Motion.LONG_MS, easing = Motion.Ease), label = "art") { bmp ->
+        Crossfade(artwork, animationSpec = tween(Motion.SHORT_MS, easing = Motion.Ease), label = "art") { bmp ->
             if (bmp != null) {
                 Image(bmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             } else {
