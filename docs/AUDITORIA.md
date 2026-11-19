@@ -101,3 +101,12 @@ Compilado y probado en Linux sobre `963f8f7`: `assembleDebug`, `lintDebug`, `tes
 - `hls_get_current_video: failed to identify current_playlist` aparece justo antes de `AirPlay Video stopped`. `current_video` solo vuelve a `-1` con `playlistRemove` o al cerrar la conexión, así que el error parece una consecuencia del cierre que pide el emisor, no su causa. Falta el logcat completo para ver qué petición llega antes.
 - `timeout_limit = 60` (`httpd.c`, igual en UxPlay upstream) cierra cualquier conexión sin tráfico durante 60 s, incluida la de eventos (`EVENT`). Las sesiones del registro duraron 5 s y 132 s, no 60 s, así que este límite no explica esos cortes. El logcat completo diría si aparece `httpd closing dead connection`.
 
+
+### Registros del onn 4K sobre `fefe132` (2026-11-18, 20:52–20:59)
+
+- `661220d` es correcto: el encabezado `DACP-ID` llega sin ceros a la izquierda, pero el servicio `_dacp._tcp` lleva los 16 dígitos (notas de la versión 3.3.7 de shairport-sync). En el registro, DACP resuelve en 5–600 ms en las dos sesiones.
+- `8367f80` conserva la carátula si llegó como mucho 1 s antes de los metadatos. Pasa los 28 tests; falta verlo en la TV.
+- Mirroring vertical (498×1080) y horizontal (1920×884): cada giro recrea el decodificador en unos 150 ms, sin errores. Una sola vez, al pasar de música a mirroring (20:56:50.39), `VideoPipeline` intentó dibujar en una `Surface` ya abandonada y registró `GL error 0x505`; se recuperó solo.
+- En cada sesión de mirroring falla primero `c2.android.inproc.aac.decoder` y después arranca el AAC por defecto. Funciona, pero deja dos líneas `E` en cada sesión.
+- Las líneas `avc: denied { getattr } dmabuf` son del sistema (SELinux del fabricante), no de la app.
+- **Corte de YouTube a los 60 s**: los registros adjuntos (20:52–20:59) no cubren las 20:43–20:44. Además, hasta ahora la app solo mandaba a logcat los errores nativos (`LOGGER_ERR`). Por eso el aviso `httpd closing dead connection ... timeout_limit = 60` nunca podía aparecer: no prueba que el corte exista ni que no exista. La duración de 60,095 s apunta a ese límite, pero falta ver qué conexión se cierra. Si es la de `/play` (`video_play_conn`), `conn_destroy` llama a `video_reset(RESET_TYPE_HLS_CONN_CLOSED)`. Este commit sube el nivel nativo a `LOGGER_WARNING`. Siguiente paso: reproducir un vídeo de YouTube de más de 70 s con este código y buscar `httpd closing dead connection` y `video_reset` en el logcat.
