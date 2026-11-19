@@ -83,6 +83,14 @@ class AirPlayVideoPlayer(private val context: Context) {
     private val _listener = object : Player.Listener {
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             Log.w(TAG, "playback error", error)
+            // a seek outside a live stream's window (live sports pages) is recoverable: rejoin at the
+            // live edge as the Media3 live-streaming guide does, instead of reporting the video finished
+            val p = player
+            if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && p != null) {
+                p.seekToDefaultPosition()
+                p.prepare()
+                return
+            }
             onEnded?.invoke()
         }
         override fun onPlaybackStateChanged(state: Int) {
