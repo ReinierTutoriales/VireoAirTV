@@ -745,6 +745,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     // RaopCallbackHandler (called from native threads)
 
     override fun onVideoData(data: ByteArray, ntpTimeNs: Long, isH265: Boolean) {
+        if (!_mirroringActive.value) {
+            if (_audioOnly.value) _setAudioOnly(false)
+            _mirroringActive.value = true
+        }
         videoRenderer.feedFrame(data, ntpTimeNs, isH265)
     }
 
@@ -754,8 +758,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     override fun onVideoPlay(location: String, startPositionSeconds: Float) {
         if (_audioOnly.value) _setAudioOnly(false)
-        _mirroringActive.value = false
-        _mirrorSize.value = null
         _videoLocation.value = location
         _videoPlaySeq.value++
         _videoPollSuppressed = false

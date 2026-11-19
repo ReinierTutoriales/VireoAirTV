@@ -326,8 +326,18 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             launch { svc.connectionCount.collect { _connectionCount.value = it } }
             launch { svc.videoAspect.collect { _videoAspect.value = it } }
             launch { svc.videoResolution.collect { _videoResolution.value = it } }
-            launch { svc.audioOnly.collect { _audioOnly.value = it } }
-            launch { svc.mirroringActive.collect { _mirroringActive.value = it } }
+            launch {
+                svc.audioOnly.collect { audio ->
+                    _audioOnly.value = audio
+                    if (audio) _videoSessionPending.value = false
+                }
+            }
+            launch {
+                svc.mirroringActive.collect { mirroring ->
+                    _mirroringActive.value = mirroring
+                    if (mirroring) _videoSessionPending.value = false
+                }
+            }
             launch { svc.mirrorSize.collect { _mirrorSize.value = it } }
             launch { svc.trackInfo.collect { _trackInfo.value = it } }
             launch { svc.videoDownloader.progress.collect { _videoDownloadProgress.value = it } }
