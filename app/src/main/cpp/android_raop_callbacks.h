@@ -50,6 +50,8 @@ typedef struct {
     double playback_duration;
     float playback_rate;
     int playback_ready;
+    /* the user or the sender paused it (not buffering after a seek) */
+    int playback_paused;
     /* holds the /play response until the player is ready, so self-driven senders (macOS)
        establish their timeline after the real duration is known, not at duration 0 */
     pthread_cond_t play_ready_cond;
@@ -63,7 +65,7 @@ int android_callbacks_add_registered(android_callback_ctx_t *ctx, const char *pk
 void android_callbacks_destroy(android_callback_ctx_t *ctx, JNIEnv *env);
 void android_callbacks_fill(raop_callbacks_t *cbs, android_callback_ctx_t *ctx);
 void android_callbacks_update_playback_info(android_callback_ctx_t *ctx, double position,
-                                             double duration, float rate, int ready);
+                                             double duration, float rate, int ready, int paused);
 
 #ifdef __cplusplus
 }
