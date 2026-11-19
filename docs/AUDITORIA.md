@@ -59,3 +59,33 @@ Otros cambios verificados: dependencias y toolchain a la última estable, sesió
 
 Sin medir todavía en TV: latencia extremo a extremo, FPS y caídas (overlay de diagnóstico y `benchmark_log`). Los valores por defecto de audio (`low_latency`, búfer adaptativo) y `scheduled_output_buffer_release` no se cambian sin esa medición. Se mantiene la lista de decodificadores por modelo de `DecoderSelector`, heredada de moonlight-android para evitar decodificadores HEVC defectuosos.
 
+## Auditoría en hardware real y correcciones en `develop` (2026-11-18, sobre `0.0.7` / `32a4afe`)
+
+Dispositivo probado por ADB: `onn 4K Streaming Device` (`wayne`, SoC Realtek, Android 14 / API 34, HDMI `1920×1080 @ 60 Hz`, `density 320`, `android.software.leanback`).
+
+Línea base medida en `0.0.7`:
+- `dumpsys meminfo`: `TOTAL PSS 195.9 MB` (`RSS 262.9 MB`), `EGL mtrack / Graphics 97.9 MB`, `Dalvik Heap 41.2 MB`, `Native Heap 19.4 MB`.
+- `dumpsys gfxinfo`: `21.60%` de frames con jank (`1677 / 7764`; p50 `16 ms`, p90 `31 ms`, p95 `38 ms`, p99 `57 ms`).
+
+| Commit | Cambio | Evidencia en TV / código |
+|---|---|---|
+| `b72b131` | Limpiar carátula al cambiar de pista e ignorar frames DMAP vacíos (`AirPlayService`, `NowPlayingTv`) | En Spotify/YouTube Music la carátula de una canción anterior quedaba fija al pasar de tema porque `onMetadata` copiaba `_trackInfo.value.coverArt` sin limpiar |
+| `466d81e` | Mantener pantalla completa en transiciones de pista/video y soportar audio en `receiverOnly` (`MainScreen`) | Al pasar de canción o video con `connections == 0` momentáneo la UI volvía a mostrar las pestañas de la herramienta durante ~1 s |
+| `609917e` | Presets de habitación en Ajustes (`SettingsScreen`, `strings.xml`) | Renombrado rápido del receptor en TV con D-pad (`Living Room`, `Bedroom`, `Dining Room`, `Office`) |
+| `430f217` | Calidad de remuestreo `Best` en Oboe (`audio_output.h`) | Sube SRC de `Medium` a `Best` sin bajar calidad de audio |
+| `5bb18be` | Fallback de `DacpController` a `resolveService` en API 34 si `ServiceInfoCallback` no responde en 1.5 s | En `onn 4K` (API 34) llegaba `DACP: ...` pero `onServiceUpdated` nunca disparaba, dejando inactivos Siguiente/Anterior/Play-Pausa en música |
+| `f781788` | Conectar `PlayerButton` directo a `IconButton.onClick` (`VideoControls`) | El truco anterior con `onClick = {}` y `PressInteraction` ignoraba la tecla `OK` del mando de TV |
+| `964c519` | Modo TV limpio por defecto (`TvStandbyScreen`), menú de herramienta bajo demanda y fondo oscuro sin carátula (`MainScreen`, `NowPlayingTv`) | En TV las pestañas y el botón Detener se mostraban como pantalla principal en lugar de un receptor limpio |
+| `608dd35` | Desacoplar la `Surface` de ExoPlayer de forma síncrona en `surfaceDestroyed` y validar `surface.isValid` (`AirPlayVideoPlayer`) | Logcat del `onn 4K` capturó `MediaCodec$CodecException: rendering to non-initialized(obsolete) surface` en `c2.realtek.video.avc.decoder` porque `clearSurface` usaba `mainHandler.post` |
+| `910320e` | Reenviar superficies activas al enlazar el servicio (`MainViewModel`) | Si `VideoSurfaceView` entregaba su `Surface` con `service == null`, se descartaba y el video decodificaba en negro hasta reconectar |
+| `f86b33a` | Apagar `_audioOnly` al iniciar video y priorizar video sobre carátula (`AirPlayService`, `MainScreen`) | Al abrir un video en Safari viniendo de música, la pantalla quedaba fija en la carátula anterior hasta desconectar AirPlay |
+| `ba32661` | Overlay nativo de TV: transporte central (`-10s`, Play/Pausa, `+10s`, Anterior/Siguiente si hay DACP), degradados y ocultado de botones de móvil en TV (`VideoControls`, `MainScreen`) | En TV el overlay mostraba botones de teléfono (Rotar, Bloquear táctil, Copiar URL, Descargar, PiP) y solo un botón central de Play/Pausa |
+| `8e8c006` | Omitir `Modifier.blur(48.dp)` a pantalla completa en TV en `ArtworkBackdrop` (`Motion`) | El bitmap ya se escala desde `24×24 px` con `FilterQuality.High`; evita la pasada de blur 1080p en GPU (línea base `97.9 MB` EGL, `21.60%` jank) |
+| `546d4a6` | Reactivar mirroring al llegar `onVideoData` y limpiar `_videoSessionPending` al volver de video (`AirPlayService`, `MainViewModel`) | Al salir de un video hacia el escritorio del iPhone la UI quedaba retenida en estado pendiente en lugar de retomar el espejo |
+
+Pendiente de compilación y validación física tras instalar el APK de `develop`:
+- Ejecutar `./gradlew assembleDebug testDebugUnitTest lintDebug` y `./scripts/native-regress.sh` en CI o entorno con Android SDK/NDK.
+- Medir de nuevo `meminfo` y `gfxinfo` en el `onn 4K` para confirmar el efecto real de `8e8c006`.
+- Parche nativo pendiente en entorno con submódulo `UxPlay` + NDK: `app/src/main/cpp/patches/UxPlay/0013` (`lib/httpd.c`, `timeout_limit = 60` corta sesiones HLS a los 60 s) y revisión de `hls_get_current_video: failed to identify current_playlist` observado en logcat.
+
+
