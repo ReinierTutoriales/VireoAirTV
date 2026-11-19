@@ -10,7 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -66,7 +65,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,7 +80,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -91,9 +88,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -103,43 +98,17 @@ import io.github.jqssun.airplay.R
 import io.github.jqssun.airplay.ui.gestures.VideoContentScale
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import kotlin.math.abs
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-// white content, strong white ripple; long-press detected via interactions
+// white content, strong white ripple
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
     containerColor: Color = Color.Transparent,
     content: @Composable () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val viewConfiguration = LocalViewConfiguration.current
-    val hapticFeedback = LocalHapticFeedback.current
-
-    LaunchedEffect(interactionSource) {
-        var longPressed = false
-        interactionSource.interactions.collectLatest { interaction ->
-            when (interaction) {
-                is PressInteraction.Press -> {
-                    longPressed = false
-                    delay(viewConfiguration.longPressTimeoutMillis)
-                    onLongClick?.let {
-                        longPressed = true
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                        it.invoke()
-                    }
-                }
-                is PressInteraction.Release -> if (!longPressed) onClick()
-                else -> Unit
-            }
-        }
-    }
-
     CompositionLocalProvider(
         LocalContentColor provides Color.White,
         LocalRippleConfiguration provides RippleConfiguration(
@@ -153,9 +122,8 @@ fun PlayerButton(
         )
     ) {
         IconButton(
-            onClick = {},
+            onClick = onClick,
             modifier = modifier.focusRing(),
-            interactionSource = interactionSource,
             colors = IconButtonDefaults.iconButtonColors().copy(containerColor = containerColor),
             content = content,
         )
