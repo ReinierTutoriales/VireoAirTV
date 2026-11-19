@@ -27,6 +27,7 @@ typedef struct {
     jmethodID on_conn_reset;
     jmethodID on_conn_feedback;
     jmethodID on_client_registered;
+    jmethodID on_client_request;
     jmethodID on_display_pin;
     jmethodID on_metadata;
     jmethodID on_coverart;

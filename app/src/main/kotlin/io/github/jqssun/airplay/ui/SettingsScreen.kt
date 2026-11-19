@@ -169,6 +169,33 @@ fun SettingsScreen(viewModel: MainViewModel) {
             }
         }
 
+        if (!requirePin) {
+            val askNew by viewModel.pref(Prefs.ASK_NEW_DEVICES).collectAsState()
+            SettingSwitch(
+                title = stringResource(R.string.setting_ask_new_devices),
+                description = stringResource(R.string.setting_ask_new_devices_desc),
+                checked = askNew,
+                onCheckedChange = { viewModel.set(Prefs.ASK_NEW_DEVICES, it) }
+            )
+        }
+        val senders by viewModel.knownSenders.collectAsState()
+        // newest first; OK switches a sender between allowed and blocked
+        senders.asReversed().forEach { sender ->
+            SettingSwitch(
+                title = sender.name.ifEmpty { sender.model.ifEmpty { stringResource(R.string.trusted_device_unnamed) } },
+                description = stringResource(if (sender.allowed) R.string.known_sender_allowed else R.string.known_sender_blocked),
+                checked = sender.allowed,
+                onCheckedChange = { viewModel.setSenderAllowed(sender.copy(allowed = it)) }
+            )
+        }
+        if (senders.isNotEmpty()) {
+            SettingAction(
+                title = stringResource(R.string.setting_forget_senders),
+                description = stringResource(R.string.setting_forget_senders_desc),
+                onClick = { viewModel.forgetKnownSenders() }
+            )
+        }
+
         SettingSwitch(
             title = stringResource(R.string.setting_allow_new_conn),
             description = stringResource(R.string.setting_allow_new_conn_desc),

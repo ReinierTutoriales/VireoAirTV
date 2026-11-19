@@ -376,6 +376,9 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             launch { svc.serverState.collect { _serverState.value = it } }
             svc.refreshTrustedDevices()
             launch { svc.trustedDevices.collect { _trustedDevices.value = it } }
+            svc.refreshKnownSenders()
+            launch { svc.knownSendersList.collect { _knownSenders.value = it } }
+            launch { svc.deviceRequest.collect { _deviceRequest.value = it } }
             launch { svc.connectionCount.collect { _connectionCount.value = it } }
             launch { svc.videoAspect.collect { _videoAspect.value = it } }
             launch { svc.videoResolution.collect { _videoResolution.value = it } }
@@ -577,6 +580,16 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         if (_videoDownloadProgress.value != null) svc.videoDownloader.cancel() else svc.downloadVideo()
         showVideoOverlay()
     }
+
+    private val _knownSenders = MutableStateFlow<List<io.github.jqssun.airplay.service.KnownSenders.Entry>>(emptyList())
+    val knownSenders: StateFlow<List<io.github.jqssun.airplay.service.KnownSenders.Entry>> = _knownSenders.asStateFlow()
+    private val _deviceRequest = MutableStateFlow<AirPlayService.DeviceRequest?>(null)
+    val deviceRequest: StateFlow<AirPlayService.DeviceRequest?> = _deviceRequest.asStateFlow()
+
+    fun answerDeviceRequest(allow: Boolean) { service?.answerDeviceRequest(allow) }
+    fun dismissDeviceRequest() { service?.dismissDeviceRequest() }
+    fun setSenderAllowed(entry: io.github.jqssun.airplay.service.KnownSenders.Entry) { service?.setSenderAllowed(entry) }
+    fun forgetKnownSenders() { service?.forgetKnownSenders() }
 
     fun dismissPin() {
         _pinCode.value = null

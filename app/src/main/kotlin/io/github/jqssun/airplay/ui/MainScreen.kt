@@ -132,6 +132,8 @@ fun MainScreen(
     ) {
         MainScreenContent(viewModel, isInPip, onSurfaceAvailable, onSurfaceDestroyed, onPip, onLocalNetwork, receiverOnly, onLeaveReceiverOnly)
     }
+    val deviceRequest by viewModel.deviceRequest.collectAsState()
+    DeviceRequestDialog(deviceRequest, viewModel::answerDeviceRequest, viewModel::dismissDeviceRequest)
 }
 
 @Composable

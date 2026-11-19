@@ -86,6 +86,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->on_conn_reset = (*env)->GetMethodID(env, cls, "onConnectionReset", "(I)V");
     ctx->on_conn_feedback = (*env)->GetMethodID(env, cls, "onConnectionFeedback", "()V");
     ctx->on_client_registered = (*env)->GetMethodID(env, cls, "onClientRegistered", "(Ljava/lang/String;[B)V");
+    ctx->on_client_request = (*env)->GetMethodID(env, cls, "onClientRequest", "(Ljava/lang/String;[BLjava/lang/String;)Z");
     ctx->on_display_pin = (*env)->GetMethodID(env, cls, "onDisplayPin", "(Ljava/lang/String;)V");
     ctx->on_metadata = (*env)->GetMethodID(env, cls, "onMetadata", "([B)V");
     ctx->on_coverart = (*env)->GetMethodID(env, cls, "onCoverArt", "([B)V");
@@ -374,6 +375,28 @@ static void _register_client(void *cls, const char *device_id, const char *pk_st
     (*env)->DeleteLocalRef(env, jpk);
 }
 
+/* SETUP of a new session: Kotlin decides at once whether this sender may connect (blocked, or new
+   and to be allowed on the TV first). The httpd thread waits on the answer, so it can't ask and wait;
+   a refused sender gets 401 and connects again once allowed. */
+static void _report_client_request(void *cls, char *deviceid, char *model, char *name, bool *admit) {
+    android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
+    JNIEnv *env = _get_env(ctx);
+    if (!env) return;
+    jstring jid = _new_ascii_string(env, deviceid ? deviceid : "");
+    jstring jmodel = _new_ascii_string(env, model ? model : "");
+    size_t name_len = name ? strnlen(name, 256) : 0;
+    jbyteArray jname = (*env)->NewByteArray(env, (jsize)name_len);
+    if (jid && jmodel && jname) {
+        if (name_len) (*env)->SetByteArrayRegion(env, jname, 0, (jsize)name_len, (const jbyte *)name);
+        jboolean ok = (*env)->CallBooleanMethod(env, ctx->callback_obj, ctx->on_client_request, jid, jname, jmodel);
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        else *admit = ok ? true : false;
+    }
+    if (jname) (*env)->DeleteLocalRef(env, jname);
+    if (jmodel) (*env)->DeleteLocalRef(env, jmodel);
+    if (jid) (*env)->DeleteLocalRef(env, jid);
+}
+
 static bool _check_register(void *cls, const char *pk_str) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     bool found = false;
@@ -500,6 +523,7 @@ void android_callbacks_fill(raop_callbacks_t *cbs, android_callback_ctx_t *ctx) 
     cbs->video_report_size = _video_report_size;
     cbs->mirror_video_running = _mirror_video_running;
     cbs->display_pin = _display_pin;
+    cbs->report_client_request = _report_client_request;
     cbs->video_set_codec = _video_set_codec;
     cbs->on_video_play = _video_play;
     cbs->on_video_wait_ready = _video_wait_ready;

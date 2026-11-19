@@ -16,6 +16,8 @@ interface RaopCallbackHandler {
     fun onConnectionFeedback()
     // a client completed PIN pairing; its Ed25519 key (base64) is trusted without a PIN from now on
     fun onClientRegistered(publicKey: String, name: ByteArray)
+    // SETUP of a new session, on the httpd thread: answer at once whether this sender may connect
+    fun onClientRequest(deviceId: String, name: ByteArray, model: String): Boolean
     fun onDisplayPin(pin: String)
     fun onMetadata(data: ByteArray)
     fun onCoverArt(data: ByteArray)

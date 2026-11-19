@@ -121,6 +121,35 @@ class ScreensTvScreenshotTest {
         vm.set(io.github.jqssun.airplay.Prefs.REQUIRE_PIN, false)
     }
 
+    // a new sender asks on the TV; OK allows it and the dialog says to connect again
+    @Test fun deviceRequest() {
+        set("_deviceRequest", io.github.jqssun.airplay.service.AirPlayService.DeviceRequest("AA:BB", "iPhone de Reinier", "iPhone15,2"))
+        render()
+        compose.onNodeWithText("“iPhone de Reinier” wants to connect to this TV").assertExists()
+        // a dialog window has no window focus under Robolectric: focus on Allow is checked on the TV
+        compose.onNodeWithText("Allow").assertExists()
+        compose.onNodeWithText("Block").assertExists()
+        set("_deviceRequest", io.github.jqssun.airplay.service.AirPlayService.DeviceRequest("AA:BB", "iPhone de Reinier", "iPhone15,2", allowed = true))
+        compose.onNodeWithText("Connect again from the device to start.").assertExists()
+        set("_deviceRequest", null)
+    }
+
+    @Test fun settingsKnownSenders() {
+        set("_knownSenders", listOf(
+            io.github.jqssun.airplay.service.KnownSenders.Entry("a", "iPhone de Reinier", "iPhone15,2", true),
+            io.github.jqssun.airplay.service.KnownSenders.Entry("b", "", "iPad13,1", false),
+        ))
+        render {
+            openToolMenu()
+            compose.onNodeWithText("Settings").performClick()
+        }
+        compose.onNodeWithText("Ask for new devices").performScrollTo().assertExists()
+        compose.onNodeWithText("iPad13,1").performScrollTo().assertExists()
+        compose.onNodeWithText("Blocked. OK allows it").assertExists()
+        save("tv_settings_senders")
+        set("_knownSenders", emptyList<io.github.jqssun.airplay.service.KnownSenders.Entry>())
+    }
+
     @Test fun logs() {
         vm.addLog("Server started on port 7000"); vm.addLog("Client connected: iPhone")
         render {

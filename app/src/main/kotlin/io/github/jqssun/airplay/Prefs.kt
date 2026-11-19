@@ -104,6 +104,8 @@ object Prefs {
     val MAX_FPS = int("max_fps", 60, 1..Int.MAX_VALUE, restart = true)
     val OVERSCANNED = bool("overscanned", false, restart = true)
     val REQUIRE_PIN = bool("require_pin", false, restart = true)
+    // a sender never seen before is allowed or blocked on the TV first; the PIN, when on, replaces it
+    val ASK_NEW_DEVICES = bool("ask_new_devices", false)
     val ALLOW_NEW_CONN = bool("allow_new_conn", true, restart = true)
     val AUDIO_LATENCY_MS = int("audio_latency_ms", -1, -1..1000, restart = true)
     val DEBUG_ENABLED = bool("debug_enabled", false)

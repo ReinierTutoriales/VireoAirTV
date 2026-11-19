@@ -255,4 +255,16 @@
     <string name="room_dining">Dining Room</string>
     <string name="room_office">Office</string>
     <string name="tv_standby_menu_hint">Press OK or Menu for settings</string>
+    <string name="setting_ask_new_devices">Ask for new devices</string>
+    <string name="setting_ask_new_devices_desc">The first time a device connects, allow it on the TV, then connect again</string>
+    <string name="known_sender_allowed">Allowed. OK blocks it</string>
+    <string name="known_sender_blocked">Blocked. OK allows it</string>
+    <string name="setting_forget_senders">Forget devices</string>
+    <string name="setting_forget_senders_desc">Clears this list; with Ask for new devices on, each one is asked about again</string>
+    <string name="device_allow">Allow</string>
+    <string name="device_block">Block</string>
+    <string name="device_request_title">“%1$s” wants to connect to this TV</string>
+    <string name="device_request_help">You can change this later in Settings.</string>
+    <string name="device_request_allowed">“%1$s” is allowed</string>
+    <string name="device_request_try_again">Connect again from the device to start.</string>
 </resources>

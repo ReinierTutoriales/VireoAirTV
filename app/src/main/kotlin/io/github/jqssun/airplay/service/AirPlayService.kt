@@ -243,6 +243,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private set
     private val _mainHandler = Handler(Looper.getMainLooper())
     private val trustedClients by lazy { TrustedClients(this) }
+    private val knownSenders by lazy { KnownSenders(this) }
     @Volatile private var _coverArtBytes: ByteArray? = null
     private var mediaSession: MediaSession? = null
     private lateinit var sessionPlayer: SessionPlayer
@@ -996,6 +997,64 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         trustedClients.remove(publicKey)
         _trustedDevices.value = trustedClients.entries()
         _restartServer()
+    }
+
+    /** A sender asking to connect; allowed or blocked from [answerDeviceRequest] or Settings. */
+    data class DeviceRequest(val id: String, val name: String, val model: String, val allowed: Boolean = false)
+    private val _deviceRequest = MutableStateFlow<DeviceRequest?>(null)
+    val deviceRequest: StateFlow<DeviceRequest?> = _deviceRequest.asStateFlow()
+    private val _knownSenders = MutableStateFlow<List<KnownSenders.Entry>>(emptyList())
+    val knownSendersList: StateFlow<List<KnownSenders.Entry>> = _knownSenders.asStateFlow()
+
+    fun refreshKnownSenders() { _knownSenders.value = knownSenders.entries() }
+
+    // httpd thread, inside SETUP: reads and an async write only, no waiting
+    override fun onClientRequest(deviceId: String, name: ByteArray, model: String): Boolean {
+        val label = String(name, Charsets.UTF_8).trim().ifEmpty { model }
+        val known = knownSenders.find(deviceId)
+        // with the PIN on, the sender proves itself by typing it; the TV doesn't ask as well
+        val askNew = prefs[Prefs.ASK_NEW_DEVICES] && !prefs[Prefs.REQUIRE_PIN]
+        when (KnownSenders.decide(deviceId, known, askNew)) {
+            KnownSenders.Decision.BLOCKED -> {
+                log("Refused blocked sender $label ($model)")
+                return false
+            }
+            KnownSenders.Decision.ASK -> {
+                log("New sender $label ($model) asks to connect")
+                _deviceRequest.value = DeviceRequest(deviceId, label, model)
+                _launchForContent()
+                return false
+            }
+            KnownSenders.Decision.ADMIT -> {}
+        }
+        if (deviceId.isNotEmpty()) {
+            knownSenders.put(KnownSenders.Entry(deviceId, label, model, allowed = true))
+            _knownSenders.value = knownSenders.entries()
+        }
+        if (_deviceRequest.value?.id == deviceId) _deviceRequest.value = null
+        return true
+    }
+
+    /** Allows or blocks the sender that asked; allowed, it connects when it tries again. */
+    fun answerDeviceRequest(allow: Boolean) {
+        val request = _deviceRequest.value ?: return
+        setSenderAllowed(KnownSenders.Entry(request.id, request.name, request.model, allow))
+        log("${if (allow) "Allowed" else "Blocked"} sender ${request.name}")
+        _deviceRequest.value = if (allow) request.copy(allowed = true) else null
+    }
+
+    fun dismissDeviceRequest() { _deviceRequest.value = null }
+
+    /** Settings: OK on a known sender switches it between allowed and blocked. */
+    fun setSenderAllowed(entry: KnownSenders.Entry) {
+        knownSenders.put(entry)
+        _knownSenders.value = knownSenders.entries()
+    }
+
+    /** Forgets every known sender; with "ask for new devices" on, each is asked about again. */
+    fun forgetKnownSenders() {
+        knownSenders.clear()
+        _knownSenders.value = emptyList()
     }
 
     override fun onConnectionFeedback() {
