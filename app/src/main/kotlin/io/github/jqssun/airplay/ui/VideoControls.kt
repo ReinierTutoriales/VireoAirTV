@@ -41,13 +41,17 @@ import androidx.compose.material.icons.rounded.CropLandscape
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FitScreen
+import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhotoSizeSelectActual
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.ripple.RippleAlpha
@@ -77,6 +81,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -141,6 +146,70 @@ fun PlayPauseButton(playing: Boolean, onClick: () -> Unit, modifier: Modifier = 
     }
 }
 
+// tv-style center transport bar: rewind 10s, play/pause, forward 10s, plus previous/next when DACP is active
+@Composable
+fun VideoTransportControls(
+    playing: Boolean,
+    onRewind: () -> Unit,
+    onPlayPause: () -> Unit,
+    onForward: () -> Unit,
+    modifier: Modifier = Modifier,
+    playPauseModifier: Modifier = Modifier,
+    onPrevious: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null,
+) {
+    val pill = Color.Black.copy(alpha = 0.45f)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onPrevious != null) {
+            PlayerButton(modifier = Modifier.size(52.dp), containerColor = pill, onClick = onPrevious) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipPrevious,
+                    contentDescription = stringResource(R.string.cd_previous),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+        }
+        PlayerButton(modifier = Modifier.size(56.dp), containerColor = pill, onClick = onRewind) {
+            Icon(
+                imageVector = Icons.Rounded.Replay10,
+                contentDescription = stringResource(R.string.cd_rewind_10),
+                modifier = Modifier.size(32.dp),
+            )
+        }
+        PlayerButton(
+            modifier = playPauseModifier.size(76.dp),
+            containerColor = Color.Black.copy(alpha = 0.6f),
+            onClick = onPlayPause,
+        ) {
+            Icon(
+                imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = stringResource(R.string.cd_play_pause),
+                modifier = Modifier.size(48.dp),
+            )
+        }
+        PlayerButton(modifier = Modifier.size(56.dp), containerColor = pill, onClick = onForward) {
+            Icon(
+                imageVector = Icons.Rounded.Forward10,
+                contentDescription = stringResource(R.string.cd_forward_10),
+                modifier = Modifier.size(32.dp),
+            )
+        }
+        if (onNext != null) {
+            PlayerButton(modifier = Modifier.size(52.dp), containerColor = pill, onClick = onNext) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipNext,
+                    contentDescription = stringResource(R.string.cd_next),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun VideoControlsTop(
     title: String,
@@ -154,18 +223,21 @@ fun VideoControlsTop(
     // null when the video offers no alternative audio or subtitles
     onTracksClick: (() -> Unit)? = null,
 ) {
+    val tv = isTv()
     val insets = WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues()
     val layoutDirection = LocalLayoutDirection.current
-    val extraTopPadding = if (insets.calculateTopPadding() == 0.dp) 16.dp else 0.dp
+    val extraTopPadding = if (insets.calculateTopPadding() == 0.dp) 20.dp else 0.dp
     Row(
         modifier = modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.78f), Color.Transparent)))
             .padding(
                 start = insets.calculateStartPadding(layoutDirection),
                 top = insets.calculateTopPadding(),
                 end = insets.calculateEndPadding(layoutDirection),
             )
-            .padding(horizontal = 8.dp)
-            .padding(bottom = 16.dp)
+            .padding(horizontal = if (tv) 32.dp else 8.dp)
+            .padding(bottom = 24.dp)
             .padding(top = extraTopPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -175,7 +247,7 @@ fun VideoControlsTop(
         }
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
+            style = if (tv) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
             color = Color.White,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -193,7 +265,7 @@ fun VideoControlsTop(
             PlayerButton(onClick = onSpeedClick) {
                 Icon(Icons.Rounded.Speed, contentDescription = stringResource(R.string.select_playback_speed))
             }
-            if (videoUrl != null) {
+            if (!tv && videoUrl != null) {
                 val clipboard = LocalClipboard.current
                 val scope = rememberCoroutineScope()
                 PlayerButton(onClick = {
@@ -202,7 +274,7 @@ fun VideoControlsTop(
                     Icon(Icons.Rounded.ContentCopy, contentDescription = stringResource(R.string.cd_copy_url))
                 }
             }
-            if (showDownload) {
+            if (!tv && showDownload) {
                 PlayerButton(onClick = onDownloadClick) {
                     when {
                         downloadProgress == null -> Icon(
@@ -243,51 +315,74 @@ fun VideoControlsBottom(
     modifier: Modifier = Modifier,
     seekBarModifier: Modifier = Modifier,
 ) {
+    val tv = isTv()
     val insets = WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues()
     val layoutDirection = LocalLayoutDirection.current
     Column(
         modifier = modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
             .padding(
                 start = insets.calculateStartPadding(layoutDirection),
                 end = insets.calculateEndPadding(layoutDirection),
                 bottom = insets.calculateBottomPadding(),
             )
-            .padding(horizontal = 8.dp)
-            .padding(top = 16.dp)
-            .padding(bottom = 16.dp.takeIf { insets.calculateBottomPadding() == 0.dp } ?: 0.dp),
+            .padding(horizontal = if (tv) 32.dp else 8.dp)
+            .padding(top = 28.dp)
+            .padding(bottom = if (tv) 24.dp else 16.dp.takeIf { insets.calculateBottomPadding() == 0.dp } ?: 0.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            var showRemaining by rememberSaveable { mutableStateOf(false) }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { showRemaining = !showRemaining },
-            ) {
+            if (tv) {
                 Text(
-                    text = if (showRemaining) "-${formatVideoTime(durationMs - positionMs)}" else formatVideoTime(positionMs),
+                    text = formatVideoTime(positionMs),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
+                    color = Color.White.copy(alpha = 0.9f),
                 )
-                Text(text = " / ", style = MaterialTheme.typography.bodyMedium, color = Color.White)
-                Text(
-                    text = formatVideoTime(durationMs),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            PlayerButton(modifier = Modifier.size(30.dp), onClick = onRotateClick) {
-                Icon(
-                    Icons.Rounded.ScreenRotation,
-                    contentDescription = stringResource(R.string.cd_rotate),
-                    modifier = Modifier.size(20.dp),
-                )
+                Spacer(modifier = Modifier.weight(1f))
+                if (durationMs > 0) {
+                    Text(
+                        text = "-${formatVideoTime((durationMs - positionMs).coerceAtLeast(0L))}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.72f),
+                    )
+                }
+                Spacer(modifier = Modifier.size(12.dp))
+                PlayerButton(onClick = onContentScaleClick) {
+                    Icon(contentScale.icon(), contentDescription = stringResource(contentScale.nameRes()))
+                }
+            } else {
+                var showRemaining by rememberSaveable { mutableStateOf(false) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { showRemaining = !showRemaining },
+                ) {
+                    Text(
+                        text = if (showRemaining) "-${formatVideoTime(durationMs - positionMs)}" else formatVideoTime(positionMs),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                    )
+                    Text(text = " / ", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                    Text(
+                        text = formatVideoTime(durationMs),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                PlayerButton(modifier = Modifier.size(30.dp), onClick = onRotateClick) {
+                    Icon(
+                        Icons.Rounded.ScreenRotation,
+                        contentDescription = stringResource(R.string.cd_rotate),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
         PlayerSeekbar(
@@ -297,22 +392,24 @@ fun VideoControlsBottom(
             onSeekEnd = onSeekEnd,
             modifier = seekBarModifier,
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp, alignment = Alignment.Start),
-        ) {
-            PlayerButton(onClick = onLockClick) {
-                Icon(Icons.Rounded.LockOpen, contentDescription = stringResource(R.string.cd_lock_controls))
-            }
-            PlayerButton(onClick = onContentScaleClick) {
-                Icon(contentScale.icon(), contentDescription = stringResource(contentScale.nameRes()))
-            }
-            if (isPipSupported) {
-                PlayerButton(onClick = onPipClick) {
-                    Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = stringResource(R.string.cd_pip))
+        if (!tv) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, alignment = Alignment.Start),
+            ) {
+                PlayerButton(onClick = onLockClick) {
+                    Icon(Icons.Rounded.LockOpen, contentDescription = stringResource(R.string.cd_lock_controls))
+                }
+                PlayerButton(onClick = onContentScaleClick) {
+                    Icon(contentScale.icon(), contentDescription = stringResource(contentScale.nameRes()))
+                }
+                if (isPipSupported) {
+                    PlayerButton(onClick = onPipClick) {
+                        Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = stringResource(R.string.cd_pip))
+                    }
                 }
             }
         }

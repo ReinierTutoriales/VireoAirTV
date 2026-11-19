@@ -69,6 +69,8 @@
 
     <!-- Player controls -->
     <string name="cd_back">Back</string>
+    <string name="cd_rewind_10">Rewind 10 seconds</string>
+    <string name="cd_forward_10">Forward 10 seconds</string>
     <string name="cd_copy_url">Copy video URL</string>
     <string name="cd_rotate">Rotate screen</string>
     <string name="cd_lock_controls">Lock controls</string>

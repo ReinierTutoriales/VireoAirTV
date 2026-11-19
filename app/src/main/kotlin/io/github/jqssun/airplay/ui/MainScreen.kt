@@ -414,18 +414,12 @@ private fun MainScreenContent(
                 volumeAndBrightnessGestureState = volumeAndBrightnessGestureState,
                 zoomState = zoomState
             )
-            androidx.compose.animation.AnimatedVisibility(
-                visible = overlayVisible && videoPlaybackActive && !controlsLocked,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut()
-            ) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
-            }
             if (buffering) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).size(72.dp))
             }
             DoubleTapIndicator(tapGestureState = tapGestureState)
             val seekAmountMs = seekGestureState.seekAmountMs
+            val dacpReady by viewModel.clientVolumeAdjustable.collectAsState()
             when {
                 seekAmountMs != null -> GestureInfoText(
                     info = "${if (seekAmountMs < 0) "-" else "+"}${formatVideoTime(abs(seekAmountMs))}\n" +
@@ -446,12 +440,32 @@ private fun MainScreenContent(
                     exit = androidx.compose.animation.fadeOut(),
                     modifier = Modifier.align(Alignment.Center)
                 ) {
-                    PlayPauseButton(
+                    VideoTransportControls(
                         playing = playing,
-                        onClick = { viewModel.toggleVideoPlayPause() },
-                        modifier = Modifier
+                        onRewind = {
+                            viewModel.seekVideoBy(-TapGestureState.SEEK_INCREMENT_MS)
+                            viewModel.showVideoOverlay()
+                        },
+                        onPlayPause = { viewModel.toggleVideoPlayPause() },
+                        onForward = {
+                            viewModel.seekVideoBy(TapGestureState.SEEK_INCREMENT_MS)
+                            viewModel.showVideoOverlay()
+                        },
+                        playPauseModifier = Modifier
                             .focusRequester(playPauseFocusRequester)
-                            .onFocusChanged { isPlayPauseFocused = it.hasFocus }
+                            .onFocusChanged { isPlayPauseFocused = it.hasFocus },
+                        onPrevious = if (dacpReady) {
+                            {
+                                viewModel.senderCommand(SenderCommand.PREVIOUS)
+                                viewModel.showVideoOverlay()
+                            }
+                        } else null,
+                        onNext = if (dacpReady) {
+                            {
+                                viewModel.senderCommand(SenderCommand.NEXT)
+                                viewModel.showVideoOverlay()
+                            }
+                        } else null,
                     )
                 }
             }
