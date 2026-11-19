@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.os.Build
 import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -116,6 +117,7 @@ class AirPlayVideoPlayer(private val context: Context) {
             if (videoSize.height == 0) return
             val width = (videoSize.width * videoSize.pixelWidthHeightRatio).toInt()
             onVideoSize?.invoke(width, videoSize.height, width.toFloat() / videoSize.height)
+            _applyFrameRate()
         }
     }
 
@@ -126,6 +128,9 @@ class AirPlayVideoPlayer(private val context: Context) {
             .setBandwidthMeter(bandwidthMeter)
             .setMediaSourceFactory(mediaSourceFactory)
             .build().also {
+            // the display mode is asked for below with CHANGE_FRAME_RATE_ALWAYS; Media3's own request
+            // (ONLY_IF_SEAMLESS) would keep 24 fps films on a 60 Hz mode on most TVs
+            it.videoChangeFrameRateStrategy = C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
             it.addListener(_listener)
             pendingSurface?.takeIf { s -> s.isValid }?.let { s -> it.setVideoSurface(s) }
             it.volume = clientGain
@@ -206,6 +211,21 @@ class AirPlayVideoPlayer(private val context: Context) {
         if (!surface.isValid) return@_runOnMain
         pendingSurface = surface
         player?.setVideoSurface(surface)
+        _applyFrameRate()
+    }
+
+    /**
+     * Ask the display for the video's frame rate, as Android TV's frame-rate guide describes: a fixed-source
+     * rate with CHANGE_FRAME_RATE_ALWAYS. The system still applies the user's "Match content frame rate"
+     * setting (never / seamless only / always), so nothing switches against the user's choice.
+     */
+    private fun _applyFrameRate(clear: Boolean = false) {
+        if (Build.VERSION.SDK_INT < 31) return
+        val surface = pendingSurface?.takeIf { it.isValid } ?: return
+        val fps = if (clear) 0f else player?.videoFormat?.frameRate?.takeIf { it > 0f } ?: return
+        runCatching {
+            surface.setFrameRate(fps, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ALWAYS)
+        }
     }
 
     // no-op if a newer surface already replaced this one
@@ -218,6 +238,7 @@ class AirPlayVideoPlayer(private val context: Context) {
 
     private fun _stopInternal(reportStopped: Boolean) {
         mainHandler.removeCallbacks(_reportTick)
+        _applyFrameRate(clear = true)
         player?.let {
             it.removeListener(_listener)
             it.release()
