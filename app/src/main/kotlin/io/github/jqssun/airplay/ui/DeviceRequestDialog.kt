@@ -50,7 +50,7 @@ fun DeviceRequestDialog(
             text = { Text(stringResource(R.string.device_request_try_again)) },
             confirmButton = {
                 TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) {
-                    Text(stringResource(android.R.string.ok))
+                    Text(stringResource(R.string.btn_ok))
                 }
                 LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
             },

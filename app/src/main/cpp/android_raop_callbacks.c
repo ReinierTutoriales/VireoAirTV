@@ -228,7 +228,6 @@ static void _display_pin(void *cls, char *pin) {
 }
 
 /* Stubs for less critical callbacks */
-static void _noop(void *cls) { (void)cls; }
 static void _video_pause(void *cls) { LOGI("video_pause"); }
 static void _video_resume(void *cls) { LOGI("video_resume"); }
 /* client heartbeat (POST /feedback, about every 2 s): the service drops a client that stops sending it */
