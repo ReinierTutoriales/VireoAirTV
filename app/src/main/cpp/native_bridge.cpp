@@ -68,7 +68,9 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeInit(
     }
     ctx->cb_ctx.raop = ctx->raop;
 
-    raop_set_log_level(ctx->raop, LOGGER_ERR);
+    // warnings too: UxPlay uses them for rare session events (an idle connection closed after
+    // 60 s, a rejected connection, a playlistRemove that does not match), none on the per-frame path
+    raop_set_log_level(ctx->raop, LOGGER_WARNING);
     raop_set_log_callback(ctx->raop, _log_callback, NULL);
 
     const char *keyfile_c = env->GetStringUTFChars(keyFile, NULL);
