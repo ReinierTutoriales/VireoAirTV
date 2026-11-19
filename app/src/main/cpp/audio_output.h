@@ -135,7 +135,7 @@ private:
             ->setFormat(oboe::AudioFormat::I16)
             ->setChannelCount(mChannels)
             ->setSampleRate(mSampleRate)
-            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
+            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Best)
             ->setContentType(oboe::ContentType::Music)
             ->setDataCallback(mCallbacks)
             ->setErrorCallback(mCallbacks);
