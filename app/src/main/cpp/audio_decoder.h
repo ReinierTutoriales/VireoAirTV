@@ -432,7 +432,13 @@ static inline AMediaCodec *startMediaCodec(const CodecConfig &c, LogSink &log, b
     if (realtimePriority) AMediaFormat_setInt32(fmt, "priority", 0);
     if (lowLatency) AMediaFormat_setInt32(fmt, "low-latency", 1);
     AMediaFormat_setBuffer(fmt, "csd-0", c.csd, c.csdLen);
-    AMediaCodec *codec = c.preferName ? startCodec(c.mime, c.preferName, fmt, log) : nullptr;
+    // a device without the preferred decoder fails the same way every session: try it once per process
+    static std::atomic<bool> preferMissing{false};
+    AMediaCodec *codec = nullptr;
+    if (c.preferName && !preferMissing.load()) {
+        codec = startCodec(c.mime, c.preferName, fmt, log);
+        if (!codec) preferMissing.store(true);
+    }
     if (!codec) codec = startCodec(c.mime, nullptr, fmt, log);
     AMediaFormat_delete(fmt);
     return codec;
