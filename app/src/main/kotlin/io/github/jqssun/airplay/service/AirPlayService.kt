@@ -27,6 +27,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -1364,6 +1365,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private fun launchMainActivity() {
         Handler(Looper.getMainLooper()).post {
+            // a screen saver stays over every activity, even ours in the foreground (CastBay ScreenLauncher)
+            _wakeScreen()
             if (_isAppInForeground()) return@post
             val launchIntent = Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
@@ -1379,6 +1382,40 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 Log.w(TAG, "Failed to launch activity", e)
                 _notifyLaunchFallback(launchIntent, includeOverlayAction = false)
             }
+        }
+    }
+
+    /**
+     * Wakes a TV in standby or in its screen saver before the cast is shown. As CastBay found, a wake lock
+     * turns the screen on but does not end a screen saver; a window with FLAG_TURN_SCREEN_ON does, and an
+     * overlay window (Display over other apps) needs no activity. It is one pixel and removed at once.
+     */
+    @Suppress("DEPRECATION")
+    private fun _wakeScreen() {
+        try {
+            (getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "VireoAirTV:castWake")
+                .acquire(3_000)
+        } catch (e: Exception) {
+            Log.w(TAG, "wake lock: ${e.message}")
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !Settings.canDrawOverlays(this)) return
+        try {
+            val windows = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+            val view = android.view.View(this)
+            val params = android.view.WindowManager.LayoutParams(
+                1, 1,
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                android.graphics.PixelFormat.TRANSLUCENT
+            )
+            windows.addView(view, params)
+            Handler(Looper.getMainLooper()).postDelayed({ runCatching { windows.removeView(view) } }, 1_500)
+        } catch (e: Exception) {
+            Log.w(TAG, "wake window: ${e.message}")
         }
     }
 
