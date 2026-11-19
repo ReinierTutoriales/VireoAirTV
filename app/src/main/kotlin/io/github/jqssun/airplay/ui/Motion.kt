@@ -77,6 +77,7 @@ fun FadeFromBlack(active: Boolean, modifier: Modifier = Modifier, key: Any? = nu
  */
 @Composable
 fun ArtworkBackdrop(coverArt: Bitmap?, modifier: Modifier = Modifier) {
+    val tv = isTv()
     val tiny = remember(coverArt) {
         coverArt?.scale(BACKDROP_PX, BACKDROP_PX)?.asImageBitmap()
     }
@@ -94,7 +95,8 @@ fun ArtworkBackdrop(coverArt: Bitmap?, modifier: Modifier = Modifier) {
                     filterQuality = FilterQuality.High,
                     modifier = Modifier
                         .fillMaxSize()
-                        .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp) else Modifier)
+                        // 24x24 bilinear upscale is already soft on TV; skip full-screen GPU blur pass
+                        .then(if (!tv && Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp) else Modifier)
                 )
             }
         }
