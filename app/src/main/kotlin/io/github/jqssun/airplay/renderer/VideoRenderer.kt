@@ -22,6 +22,12 @@ class VideoRenderer(ctx: Context) {
     private var videoWidth = 0
     private var videoHeight = 0
     private var firstFrameQueued = false
+    // Frames waiting for a decoder input buffer, oldest first. Guarded by [inputLock], which the feed
+    // side and the drain thread both take for input work; [lock] is never taken under it.
+    private val pending = ArrayDeque<Pair<ByteArray, Long>>()
+    private val inputLock = Any()
+    // after a backlog is dropped, P-frames until the next key frame would decode to corruption
+    private var awaitingKeyFrame = false
     // output side runs on its own thread so a decoded frame reaches the screen as soon as it is ready,
     // not when the next input frame arrives
     private var _drainThread: Thread? = null
@@ -157,25 +163,58 @@ class VideoRenderer(ctx: Context) {
         }
     }
 
+    /**
+     * Queues the frame and hands the decoder as many queued frames as it has input buffers for, without
+     * waiting. This runs on the network thread: it used to wait up to 200 ms for a buffer and then drop the
+     * frame, which stalled the stream and corrupted the picture until the next key frame (the sender sends
+     * one only at session start and on format changes). Now a slow decoder only builds a backlog, which the
+     * drain thread keeps feeding; if the backlog grows past [MAX_PENDING_FRAMES] it is dropped whole and
+     * decoding resumes at the next key frame, so the picture never shows broken references (CastBay
+     * VideoRenderer does the same).
+     */
     private fun _feedToCodec(data: ByteArray, ntpTimeNs: Long) {
         val c = codec ?: return
         // without the drain thread no frame leaves the decoder; reset it (feedFrame restarts at a keyframe)
         if (_drainThread?.isAlive == false) throw IllegalStateException("decoder output thread stopped")
-        // dropping a frame desyncs decoder until the next keyframe, but source would only send one on (re)connect
-        val retries = if (firstFrameQueued) FEED_RETRIES else FIRST_FEED_RETRIES
-        repeat(retries) {
-            val idx = c.dequeueInputBuffer(FEED_WAIT_US)
-            if (idx >= 0) {
-                val buf = c.getInputBuffer(idx) ?: return
-                buf.clear()
-                buf.put(data)
-                c.queueInputBuffer(idx, 0, data.size, ntpTimeNs / 1000, 0)
-                firstFrameQueued = true
+        synchronized(inputLock) {
+            if (pending.size >= MAX_PENDING_FRAMES) {
+                droppedFrames += pending.size
+                Log.w(TAG, "Decoder backlog of ${pending.size} frames dropped; resuming at the next key frame")
+                pending.clear()
+                awaitingKeyFrame = true
+            }
+            if (awaitingKeyFrame) {
+                if (!_isKeyframe(data, currentH265)) { droppedFrames++; return }
+                awaitingKeyFrame = false
+            }
+            pending.addLast(data to ntpTimeNs / 1000)
+            _feedPending(c, if (firstFrameQueued) 0L else FIRST_FEED_WAIT_US)
+        }
+    }
+
+    /** Under [inputLock]: copies queued frames into free input buffers, waiting at most [waitUs] for the first. */
+    private fun _feedPending(c: MediaCodec, waitUs: Long) {
+        var wait = waitUs
+        while (pending.isNotEmpty()) {
+            val idx = c.dequeueInputBuffer(wait)
+            if (idx < 0) return
+            wait = 0L
+            val (data, ptsUs) = pending.removeFirst()
+            val buf = c.getInputBuffer(idx) ?: return
+            if (data.size > buf.capacity()) {
+                // a frame that cannot be decoded breaks every later reference: skip to the next key frame
+                Log.w(TAG, "Video frame of ${data.size} bytes exceeds the input buffer; resuming at the next key frame")
+                c.queueInputBuffer(idx, 0, 0, ptsUs, 0)
+                droppedFrames += 1 + pending.size
+                pending.clear()
+                awaitingKeyFrame = true
                 return
             }
+            buf.clear()
+            buf.put(data)
+            c.queueInputBuffer(idx, 0, data.size, ptsUs, 0)
+            firstFrameQueued = true
         }
-        droppedFrames++
-        Log.w(TAG, "Decoder input queue full; dropping frame. drops=$droppedFrames")
     }
 
     private fun _isKeyframe(data: ByteArray, isH265: Boolean): Boolean {
@@ -207,6 +246,7 @@ class VideoRenderer(ctx: Context) {
         val info = (if (h265) hevcDecoder else avcDecoder) ?: error("no decoder selected for $mime")
 
         firstFrameQueued = false
+        synchronized(inputLock) { pending.clear(); awaitingKeyFrame = false }
         try {
             _startWithLadder(info, mime, s, h265)
         } catch (e: Exception) {
@@ -293,6 +333,8 @@ class VideoRenderer(ctx: Context) {
         val info = MediaCodec.BufferInfo()
         try {
             while (_draining) {
+                // a decoder that freed input buffers takes the frames still queued, even if no new one arrives
+                synchronized(inputLock) { if (pending.isNotEmpty() && _draining) _feedPending(c, 0L) }
                 val idx = c.dequeueOutputBuffer(info, DRAIN_WAIT_US)
                 if (idx < 0) continue
                 if (!_draining) { c.releaseOutputBuffer(idx, false); break }
@@ -354,9 +396,10 @@ class VideoRenderer(ctx: Context) {
     companion object {
         private const val TAG = "VideoRenderer"
         private const val BENCH_TAG = "BENCHMARK"
-        private const val FEED_WAIT_US = 20_000L
-        private const val FEED_RETRIES = 10
-        private const val FIRST_FEED_RETRIES = 50
+        // the decoder's first input buffers can take a moment after start(); later frames never wait
+        private const val FIRST_FEED_WAIT_US = 50_000L
+        // about 2 s at 60 fps: past this the decoder is not keeping up, and the backlog is dropped
+        private const val MAX_PENDING_FRAMES = 120
         private const val DRAIN_WAIT_US = 10_000L
         private const val DRAIN_JOIN_MS = 500L
     }
