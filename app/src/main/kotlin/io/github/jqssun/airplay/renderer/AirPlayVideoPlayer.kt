@@ -238,7 +238,8 @@ class AirPlayVideoPlayer(private val context: Context) {
 
     private fun _stopInternal(reportStopped: Boolean) {
         mainHandler.removeCallbacks(_reportTick)
-        _applyFrameRate(clear = true)
+        // only a real stop gives the display mode back: between two items it would switch twice
+        if (reportStopped) _applyFrameRate(clear = true)
         player?.let {
             it.removeListener(_listener)
             it.release()
