@@ -104,6 +104,9 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeInit(
     if (!ctx->dnssd) {
         LOGE("dnssd_init failed: %d", dns_err);
     } else {
+        /* bit 27 (legacy pairing) only with the PIN, as uxplay.cpp sets it (-pin on, default off).
+           FEATURES_1 has it on, and iOS then waits about 5 s before it connects (UxPlay #176) */
+        dnssd_set_airplay_features(ctx->dnssd, 27, requirePin ? 1 : 0);
         raop_set_dnssd(ctx->raop, ctx->dnssd);
     }
 
