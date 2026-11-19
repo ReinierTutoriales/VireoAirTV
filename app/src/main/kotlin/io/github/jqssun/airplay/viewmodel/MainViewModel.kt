@@ -311,11 +311,15 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     }
 
     private var _serviceJobs: Job? = null
+    private var _mirrorSurface: Surface? = null
+    private var _videoPlaybackSurface: Surface? = null
 
     // service binding
     fun bindService(svc: AirPlayService) {
         _serviceJobs?.cancel()
         service = svc
+        _mirrorSurface?.takeIf { it.isValid }?.let { svc.setVideoSurface(it) }
+        _videoPlaybackSurface?.takeIf { it.isValid }?.let { svc.setVideoPlaybackSurface(it) }
         updateFromService()
         _serviceJobs = viewModelScope.launch {
             launch { svc.serverState.collect { _serverState.value = it } }
@@ -395,18 +399,22 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     }
 
     fun onSurfaceAvailable(surface: Surface) {
+        _mirrorSurface = surface
         service?.setVideoSurface(surface)
     }
 
     fun onSurfaceDestroyed(surface: Surface) {
+        if (_mirrorSurface === surface) _mirrorSurface = null
         service?.clearVideoSurface(surface)
     }
 
     fun onVideoPlaybackSurfaceAvailable(surface: Surface) {
+        _videoPlaybackSurface = surface
         service?.setVideoPlaybackSurface(surface)
     }
 
     fun onVideoPlaybackSurfaceDestroyed(surface: Surface) {
+        if (_videoPlaybackSurface === surface) _videoPlaybackSurface = null
         service?.clearVideoPlaybackSurface(surface)
     }
 
