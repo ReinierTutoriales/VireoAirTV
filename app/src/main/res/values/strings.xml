@@ -218,4 +218,8 @@
     <string name="tracks_subtitles">Subtitles</string>
     <string name="tracks_off">Off</string>
     <string name="tracks_untitled">Track %1$d</string>
+    <string name="room_living">Living Room</string>
+    <string name="room_bedroom">Bedroom</string>
+    <string name="room_dining">Dining Room</string>
+    <string name="room_office">Office</string>
 </resources>

@@ -96,6 +96,20 @@ fun SettingsScreen(viewModel: MainViewModel) {
             onCommit = { viewModel.set(Prefs.SERVER_NAME, it) }
         )
 
+        val roomPresets = listOf(
+            stringResource(R.string.room_living),
+            stringResource(R.string.room_bedroom),
+            stringResource(R.string.room_dining),
+            stringResource(R.string.room_office),
+        ).map { it to it }
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            ChipRow(
+                value = serverName,
+                options = roomPresets,
+                onSelect = { viewModel.set(Prefs.SERVER_NAME, it) }
+            )
+        }
+
         SettingTextField(
             label = stringResource(R.string.setting_server_port),
             value = serverPort.toString(),
