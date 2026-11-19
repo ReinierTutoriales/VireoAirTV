@@ -96,19 +96,11 @@ fun SettingsScreen(viewModel: MainViewModel) {
             onCommit = { viewModel.set(Prefs.SERVER_NAME, it) }
         )
 
-        val roomPresets = listOf(
-            stringResource(R.string.room_living),
-            stringResource(R.string.room_bedroom),
-            stringResource(R.string.room_dining),
-            stringResource(R.string.room_office),
-        ).map { it to it }
-        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            ChipRow(
-                value = serverName,
-                options = roomPresets,
-                onSelect = { viewModel.set(Prefs.SERVER_NAME, it) }
-            )
-        }
+        RoomNameChips(
+            serverName = serverName,
+            onSelect = { viewModel.set(Prefs.SERVER_NAME, it) },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
 
         SettingTextField(
             label = stringResource(R.string.setting_server_port),
@@ -705,6 +697,30 @@ private fun SettingChipField(
             }
         }
     )
+}
+
+@Composable
+internal fun RoomNameChips(
+    serverName: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val deviceName = remember(context) { Prefs.deviceServerName(context) }
+    val rooms = buildList {
+        if (deviceName != null) add(deviceName)
+        add(stringResource(R.string.room_living))
+        add(stringResource(R.string.room_bedroom))
+        add(stringResource(R.string.room_dining))
+        add(stringResource(R.string.room_office))
+    }.distinct().map { it to it }
+    Box(modifier = modifier) {
+        ChipRow(
+            value = serverName,
+            options = rooms,
+            onSelect = onSelect,
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

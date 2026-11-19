@@ -237,6 +237,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     }
 
     init {
+        Prefs.seedDefaultServerName(app, prefs)
         // restore first: a write before the restore finishes would truncate the previous session's log
         viewModelScope.launch(Dispatchers.IO) {
             loadPersistedLogs()

@@ -290,6 +290,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     override fun onCreate() {
         super.onCreate()
+        Prefs.seedDefaultServerName(this, prefs)
         createNotificationChannel()
         _mainHandler.postDelayed(_feedbackWatchdog, FEEDBACK_CHECK_MS)
         dacpController = DacpController(this)

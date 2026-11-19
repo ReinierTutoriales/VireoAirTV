@@ -968,6 +968,11 @@ private fun OverviewContent(
                         Text(stringResource(label))
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+                RoomNameChips(
+                    serverName = serverName,
+                    onSelect = { viewModel.set(Prefs.SERVER_NAME, it) },
+                )
             }
         }
     }

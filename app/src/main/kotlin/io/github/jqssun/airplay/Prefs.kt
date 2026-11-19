@@ -1,7 +1,9 @@
 package io.github.jqssun.airplay
 
+import android.content.Context
 import android.content.SharedPreferences
 import android.media.MediaFormat
+import android.provider.Settings
 import androidx.core.content.edit
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -73,6 +75,18 @@ object Prefs {
     fun forced(v: String) = when (v) { ON -> true; OFF -> false; else -> null }
 
     val SERVER_NAME = str("server_name", "VireoAirTV", restart = true)
+
+    /** The TV's user-configured system name (e.g. "TV de Sala"), or null when unset. */
+    fun deviceServerName(context: Context): String? = runCatching {
+        Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)?.trim()
+    }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+    /** Seeds [SERVER_NAME] from [deviceServerName] on first launch so multiple TVs do not share "VireoAirTV". */
+    fun seedDefaultServerName(context: Context, prefs: SharedPreferences) {
+        if (prefs.contains(SERVER_NAME.key)) return
+        val name = deviceServerName(context) ?: return
+        SERVER_NAME.write(prefs, name)
+    }
     val SERVER_PORT = int("server_port", 7000, 1..65535, restart = true)
     val AUTO_START = bool("auto_start", true)
     val BOOT_AUTO_START = bool("boot_auto_start", true)
