@@ -11,6 +11,16 @@ import io.github.jqssun.airplay.discovery.own.MdnsResponder
 
 data class MdnsService(val name: String, val type: String, val port: Int, val txt: Map<String, String>)
 
+/** How one DNS-SD service is announced, for the network check. */
+sealed interface Announcement {
+    data object Pending : Announcement
+    data object Registered : Announcement
+    /** NsdManager's last error code for it. */
+    data class Failed(val code: Int) : Announcement
+    /** Announced by our own responder after NsdManager failed or never answered. */
+    data object OwnResponder : Announcement
+}
+
 class NsdServiceManager(private val ctx: Context) {
 
     private val nsdManager = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
@@ -21,6 +31,10 @@ class NsdServiceManager(private val ctx: Context) {
     private var released = false
     // what Android has registered; if a service never gets there, we announce everything ourselves
     private val registered = mutableSetOf<String>()
+    /** By service type; read from any thread. */
+    @Volatile var announcements: Map<String, Announcement> = emptyMap()
+        private set
+    private fun _announce(type: String, a: Announcement) { announcements = announcements + (type to a) }
     private var services: List<MdnsService> = emptyList()
     private val ownResponder by lazy { MdnsResponder(ctx) }
     private val ownExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -35,6 +49,7 @@ class NsdServiceManager(private val ctx: Context) {
 
     fun register(services: List<MdnsService>) {
         this.services = services
+        announcements = services.associate { it.type to Announcement.Pending }
         services.forEach { _register(it, 0) }
         // some TV boxes' NsdManager never answers at all (CastBay #214, #239)
         mainHandler.postDelayed({ if (registered.size < services.size) _announceByItself("no answer") }, NSD_ANSWER_TIMEOUT_MS)
@@ -55,7 +70,11 @@ class NsdServiceManager(private val ctx: Context) {
             io.github.jqssun.airplay.discovery.own.MdnsService(it.type.trimEnd('.'), it.name, it.port, it.txt)
         }
         // sockets stay off the main thread (StrictMode forbids network I/O there)
-        runCatching { ownExecutor.execute { ownResponder.start(host, own) } }
+        runCatching {
+            ownExecutor.execute {
+                if (ownResponder.start(host, own)) mainHandler.post { services.forEach { _announce(it.type, Announcement.OwnResponder) } }
+            }
+        }
     }
 
     private fun _register(s: MdnsService, attempt: Int) {
@@ -68,13 +87,14 @@ class NsdServiceManager(private val ctx: Context) {
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) {
                 Log.i(TAG, "${s.type} registered: ${info.serviceName}")
-                mainHandler.post { registered += s.type }
+                mainHandler.post { registered += s.type; _announce(s.type, Announcement.Registered) }
             }
             override fun onRegistrationFailed(info: NsdServiceInfo, code: Int) {
                 Log.e(TAG, "${s.type} registration failed: $code (attempt ${attempt + 1})")
                 // a failed listener is no longer registered; retry with a fresh one
                 mainHandler.post {
                     registrations -= this
+                    _announce(s.type, Announcement.Failed(code))
                     if (released) return@post
                     if (attempt + 1 >= MAX_REGISTER_ATTEMPTS) { _announceByItself("error $code"); return@post }
                     mainHandler.postDelayed({ if (!released) _register(s, attempt + 1) }, RETRY_BASE_DELAY_MS shl attempt)

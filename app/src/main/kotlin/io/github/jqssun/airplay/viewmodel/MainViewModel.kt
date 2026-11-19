@@ -266,23 +266,71 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         }
     }
 
+    /**
+     * A report to send without ADB: device and app, the network check, the app's log and this process's
+     * own logcat (native warnings and session changes included; an app may read its own lines). It is
+     * saved to Downloads, which a file manager or a USB stick reaches on a TV, and offered to a share
+     * target when the TV has one (most do not).
+     */
     fun exportLogs() {
         val snapshot = synchronized(_logLock) { _logList.toList() }
+        val check = networkCheck().orEmpty()
         viewModelScope.launch(Dispatchers.IO) {
             val ctx = getApplication<Application>()
-            val file = File(ctx.cacheDir, "airplay_logs.txt")
-            file.writeText(snapshot.joinToString("\n"))
+            val report = buildString {
+                appendLine("VireoAirTV ${runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull()}")
+                appendLine("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+                appendLine()
+                appendLine("== Network check")
+                check.forEach { appendLine("${it.outcome} ${it.item}: ${it.reason} ${it.detail}") }
+                appendLine()
+                appendLine("== App log")
+                snapshot.forEach { appendLine(it) }
+                appendLine()
+                appendLine("== Logcat (this process)")
+                append(runCatching {
+                    ProcessBuilder("logcat", "-d", "-v", "time", "--pid=${android.os.Process.myPid()}")
+                        .redirectErrorStream(true).start().inputStream.bufferedReader().readText()
+                }.getOrElse { "unavailable: ${it.message}" })
+            }
+            val name = "VireoAirTV-log-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
+            val saved = runCatching { _saveToDownloads(ctx, name, report) }.getOrNull()
+            val file = File(ctx.cacheDir, "airplay_logs.txt").apply { writeText(report) }
             val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            val chooserTitle = ctx.getString(io.github.jqssun.airplay.R.string.export_logs_chooser_title)
+            val canShare = intent.resolveActivity(ctx.packageManager) != null
             withContext(Dispatchers.Main) {
-                ctx.startActivity(Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                val msg = if (saved != null) ctx.getString(io.github.jqssun.airplay.R.string.export_saved, saved)
+                          else ctx.getString(io.github.jqssun.airplay.R.string.export_not_saved)
+                android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
+                if (canShare) {
+                    val chooserTitle = ctx.getString(io.github.jqssun.airplay.R.string.export_logs_chooser_title)
+                    ctx.startActivity(Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
             }
         }
+    }
+
+    /** Saves [text] in Downloads; returns where, for the message. API 29+ needs no permission for this. */
+    private fun _saveToDownloads(ctx: Application, name: String, text: String): String {
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = ctx.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("MediaStore refused the file")
+            ctx.contentResolver.openOutputStream(uri)!!.use { it.write(text.toByteArray()) }
+            return "${android.os.Environment.DIRECTORY_DOWNLOADS}/$name"
+        }
+        val dir = ctx.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: error("no external storage")
+        val file = File(dir, name).apply { writeText(text) }
+        return file.absolutePath
     }
 
     private fun loadPersistedLogs() {
@@ -491,6 +539,9 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     fun forgetTrustedClients() {
         service?.forgetTrustedClients()
     }
+
+    /** Null when the service is not bound yet. */
+    fun networkCheck(): List<io.github.jqssun.airplay.service.NetworkCheck.Result>? = service?.networkCheck()
 
     fun forgetTrustedClient(publicKey: String) {
         service?.forgetTrustedClient(publicKey)

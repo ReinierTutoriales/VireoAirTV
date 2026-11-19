@@ -97,6 +97,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private var nativeHandle = 0L
     private var nsdManager: NsdServiceManager? = null
+    @Volatile private var _serverPort = 0
+
+    /** What the receiver knows about why a sender may not find it; reads only, never restarts anything. */
+    fun networkCheck(): List<NetworkCheck.Result> {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        val type = when {
+            caps == null -> NetworkCheck.NetworkType.NONE
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkCheck.NetworkType.ETHERNET
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> NetworkCheck.NetworkType.WIFI
+            else -> NetworkCheck.NetworkType.OTHER
+        }
+        return NetworkCheck.classify(NetworkCheck.Input(
+            serverState = _serverState.value,
+            networkType = type,
+            addresses = _lanAddresses.value.toList().sorted(),
+            announcements = nsdManager?.announcements.orEmpty(),
+            usbOnly = prefs[Prefs.USB_ONLY],
+            port = _serverPort,
+        ))
+    }
     private var usbAdvertiser: UsbMdnsAdvertiser? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var foregroundStarted = false
@@ -510,6 +531,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
         val requestedPort = prefs[Prefs.SERVER_PORT]
         val port = NativeBridge.nativeStart(nativeHandle, requestedPort)
+        _serverPort = port
         if (port < 0) {
             log("Failed to start on port $requestedPort")
             _failStart()

@@ -88,6 +88,8 @@
     <string name="btn_export">Export</string>
     <string name="btn_clear">Clear</string>
     <string name="export_logs_chooser_title">Export logs</string>
+    <string name="export_saved">Report saved: %1$s</string>
+    <string name="export_not_saved">The report could not be saved</string>
 
     <!-- Settings sections -->
     <string name="section_server">Server</string>
@@ -110,6 +112,32 @@
     <string name="setting_require_pin">Require PIN (Beta)</string>
     <string name="setting_require_pin_desc">Require 4-digit PIN for each new connection</string>
     <string name="setting_forget_paired">Forget paired devices</string>
+    <string name="netcheck_run">Network check</string>
+    <string name="netcheck_title">Network check</string>
+    <string name="netcheck_pass">OK</string>
+    <string name="netcheck_problem">Problem</string>
+    <string name="netcheck_cant_verify">Can\'t verify</string>
+    <string name="netcheck_item_receiver">Receiver</string>
+    <string name="netcheck_item_network">Network</string>
+    <string name="netcheck_item_airplay">AirPlay announcement</string>
+    <string name="netcheck_item_raop">Audio announcement</string>
+    <string name="netcheck_item_same_network">iPhone on the same network</string>
+    <string name="netcheck_receiver_running">Running on port %1$s.</string>
+    <string name="netcheck_receiver_off">Stopped. Start it from Overview.%1$s</string>
+    <string name="netcheck_receiver_error">It could not start: the port may be in use. Restart the app.%1$s</string>
+    <string name="netcheck_network_wifi">Wi-Fi, address %1$s.</string>
+    <string name="netcheck_network_ethernet">Ethernet, address %1$s.</string>
+    <string name="netcheck_network_other">Not Wi-Fi or Ethernet (%1$s): the iPhone may be on another network.</string>
+    <string name="netcheck_network_no_address">No IPv4 address yet: the TV may still be joining the network.%1$s</string>
+    <string name="netcheck_network_none">No network. Connect the TV to the same Wi-Fi as the iPhone.%1$s</string>
+    <string name="netcheck_service_registered">Announced (%1$s).</string>
+    <string name="netcheck_service_own">Android\'s service failed; announced by the app itself (%1$s).</string>
+    <string name="netcheck_service_pending">Waiting for Android to announce it (%1$s).</string>
+    <string name="netcheck_service_failed">Android refused to announce it: %1$s. Restart the TV.</string>
+    <string name="netcheck_service_off">Not announced: the receiver is stopped (%1$s).</string>
+    <string name="netcheck_service_usb">Announced over USB only (%1$s), by setting.</string>
+    <string name="netcheck_service_not_used">Turned off in Settings (%1$s); the AirPlay announcement covers audio.</string>
+    <string name="netcheck_external">The TV cannot see this. If the iPhone does not list it, check that both are on the same network and that the router has no guest mode or client isolation.%1$s</string>
     <string name="trusted_device_unnamed">Paired device</string>
     <string name="trusted_device_forget">Paired with the PIN. Select to forget it: it is asked for the PIN again.</string>
     <string name="setting_forget_paired_desc">Devices that entered the PIN connect without it. Forget them so each one is asked again.</string>

@@ -23,6 +23,14 @@
     <!-- multicast permission implies Wi-Fi; keep Ethernet-only TVs eligible -->
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
 
+    <!-- the log report is offered to a share target only when one exists (Android 11+ package visibility) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
     <application
         android:name=".AirPlayApp"
         android:allowBackup="false"
