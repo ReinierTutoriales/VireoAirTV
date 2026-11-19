@@ -119,3 +119,9 @@ Compilado y probado en Linux sobre `963f8f7`: `assembleDebug`, `lintDebug`, `tes
 - `0df13bc`: una conexión del emisor que se cierra solo termina el vídeo si estaba en pausa de verdad (`playWhenReady`), no mientras carga tras un salto.
 - `0a44426`: el vídeo AirPlay pide a la pantalla su frecuencia (`CHANGE_FRAME_RATE_ALWAYS`) para quitar los tirones 3:2 de 24 fps a 60 Hz. Depende del ajuste del sistema "Ajustar frecuencia de contenido".
 - Decodificador AAC en proceso: se intenta una sola vez por proceso.
+
+### Acceso, idioma y limpieza (2026-11-19, `develop`)
+- `053467c`: UxPlay ya trae el gancho `report_client_request` en el SETUP; ahora lo usamos. Los emisores conocidos se guardan por device ID, permitidos o bloqueados. Uno bloqueado recibe 401. Con "Preguntar por dispositivos nuevos" activado (y sin PIN), uno desconocido recibe 401 mientras la TV pregunta Permitir/Bloquear; una vez permitido, entra en el siguiente intento. El hilo httpd no puede esperar la respuesta, igual que en CastBay. Ajustes lista los emisores y alterna cada uno entre permitido y bloqueado.
+- `c2e70a2`: se quita `_noop` (sin llamadas) y se usa `btn_ok`, el único recurso que lint daba por no usado.
+- `413c74f`: interfaz en español (`values-es`). Las etiquetas técnicas quedan `translatable="false"`.
+- Pendiente de validación física: el diálogo con el mando (foco en Permitir), el reintento desde iPhone y Mac tras permitir, y que un emisor sin `deviceID` siga entrando.
