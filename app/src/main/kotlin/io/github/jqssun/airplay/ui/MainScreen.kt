@@ -174,29 +174,24 @@ private fun MainScreenContent(
         }
     }
 
-    // fullscreen only once mirroring reports a size or audio starts: connections rise before the kind is known
-    var prevMirroringActive by remember { mutableStateOf(false) }
-    var prevAudioOnly by remember { mutableStateOf(false) }
+    // on TV keep playback full screen unless the user explicitly backed out during this session;
+    // avoids flashing the app UI when a sender switches between HLS video and RAOP audio
+    var userExitedFullscreen by remember { mutableStateOf(false) }
     val tv = isTv()
-    LaunchedEffect(mirroringActive, audioOnly, videoPlaybackActive, pin) {
-        val mirrorStarted = !prevMirroringActive && mirroringActive
-        val audioStarted = !prevAudioOnly && audioOnly
-        prevMirroringActive = mirroringActive
-        prevAudioOnly = audioOnly
-        // on a TV music always opens full screen, as on Apple TV
-        if ((mirrorStarted || audioStarted) && !videoPlaybackActive && (autoFullscreen || (audioStarted && tv)) && pin == null) {
+    LaunchedEffect(mirroringActive, audioOnly, videoPlaybackActive, connections, pin) {
+        if (connections == 0) {
+            // brief dip between tracks or apps must not flash the app UI; exit only if still idle
+            delay(1_500)
+            fullscreen = false
+            userExitedFullscreen = false
+            return@LaunchedEffect
+        }
+        if (videoPlaybackActive || pin != null) return@LaunchedEffect
+        val wantsFullscreen = (mirroringActive && autoFullscreen) ||
+            (audioOnly && (autoFullscreen || tv))
+        if (wantsFullscreen && !userExitedFullscreen) {
             fullscreen = true
         }
-    }
-
-    // manual fullscreen over the idle preview is deliberate; only undo on disconnect
-    LaunchedEffect(connections) {
-        if (connections == 0) fullscreen = false
-    }
-
-    // leaving video playback must not fall through to a stale mirroring fullscreen
-    LaunchedEffect(videoPlaybackActive) {
-        if (videoPlaybackActive) fullscreen = false
     }
 
     val activity = LocalActivity.current
@@ -609,37 +604,40 @@ private fun MainScreenContent(
         }
     }
 
-    // exit fullscreen while a pin is being shown so the dialog isn't covered
-    LaunchedEffect(pin) {
-        if (pin != null) fullscreen = false
-    }
-
     if (receiverOnly) {
         BackHandler { onLeaveReceiverOnly() }
-        if (mirroringActive) {
-            FullscreenVideo(
+        when {
+            mirroringActive -> FullscreenVideo(
                 viewModel = viewModel,
                 video = video,
                 onExitFullscreen = onLeaveReceiverOnly,
                 onPip = onPip,
                 quiet = true
             )
-        } else {
-            // between pictures (and before returning to the previous app) hold black, not the app
-            Box(Modifier.fillMaxSize().background(Color.Black))
+            audioOnly && connections > 0 -> NowPlayingTvScreen(viewModel)
+            else -> Box(Modifier.fillMaxSize().background(Color.Black))
         }
     } else if (fullscreen) {
-        BackHandler { fullscreen = false }
+        BackHandler {
+            userExitedFullscreen = true
+            fullscreen = false
+        }
         if (audioOnly && connections > 0) {
             // Back leaves through the BackHandler above; the screen itself has no buttons to exit
             NowPlayingTvScreen(viewModel)
-        } else {
+        } else if (mirroringActive) {
             FullscreenVideo(
                 viewModel = viewModel,
                 video = video,
-                onExitFullscreen = { fullscreen = false },
+                onExitFullscreen = {
+                    userExitedFullscreen = true
+                    fullscreen = false
+                },
                 onPip = onPip
             )
+        } else {
+            // between tracks or video items, hold black instead of flashing the app UI
+            Box(Modifier.fillMaxSize().background(Color.Black))
         }
     } else {
         Scaffold(
@@ -667,7 +665,11 @@ private fun MainScreenContent(
             Box(modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
                 TabContent(
                     tab, viewModel, video,
-                    onFullscreen = { fullscreen = true }, onPip = onPip, onLocalNetwork = onLocalNetwork,
+                    onFullscreen = {
+                        userExitedFullscreen = false
+                        fullscreen = true
+                    },
+                    onPip = onPip, onLocalNetwork = onLocalNetwork,
                     showAudioMode = audioOnly
                 )
             }
