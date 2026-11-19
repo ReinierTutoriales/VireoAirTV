@@ -151,11 +151,22 @@ fun SettingsScreen(viewModel: MainViewModel) {
             onCheckedChange = { viewModel.set(Prefs.REQUIRE_PIN, it) }
         )
         if (requirePin) {
-            SettingAction(
-                title = stringResource(R.string.setting_forget_paired),
-                description = stringResource(R.string.setting_forget_paired_desc),
-                onClick = { viewModel.forgetTrustedClients() }
-            )
+            val devices by viewModel.trustedDevices.collectAsState()
+            // one row per paired sender: OK forgets it, and only it is asked for the PIN again
+            devices.asReversed().forEach { device ->
+                SettingAction(
+                    title = device.name.ifEmpty { stringResource(R.string.trusted_device_unnamed) },
+                    description = stringResource(R.string.trusted_device_forget),
+                    onClick = { viewModel.forgetTrustedClient(device.key) }
+                )
+            }
+            if (devices.size > 1) {
+                SettingAction(
+                    title = stringResource(R.string.setting_forget_paired),
+                    description = stringResource(R.string.setting_forget_paired_desc),
+                    onClick = { viewModel.forgetTrustedClients() }
+                )
+            }
         }
 
         SettingSwitch(

@@ -85,7 +85,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->on_conn_destroy = (*env)->GetMethodID(env, cls, "onConnectionDestroy", "()V");
     ctx->on_conn_reset = (*env)->GetMethodID(env, cls, "onConnectionReset", "(I)V");
     ctx->on_conn_feedback = (*env)->GetMethodID(env, cls, "onConnectionFeedback", "()V");
-    ctx->on_client_registered = (*env)->GetMethodID(env, cls, "onClientRegistered", "(Ljava/lang/String;)V");
+    ctx->on_client_registered = (*env)->GetMethodID(env, cls, "onClientRegistered", "(Ljava/lang/String;[B)V");
     ctx->on_display_pin = (*env)->GetMethodID(env, cls, "onDisplayPin", "(Ljava/lang/String;)V");
     ctx->on_metadata = (*env)->GetMethodID(env, cls, "onMetadata", "([B)V");
     ctx->on_coverart = (*env)->GetMethodID(env, cls, "onCoverArt", "([B)V");
@@ -354,7 +354,7 @@ int android_callbacks_add_registered(android_callback_ctx_t *ctx, const char *pk
 
 static void _register_client(void *cls, const char *device_id, const char *pk_str, const char *name) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
-    (void)device_id; (void)name;
+    (void)device_id;
     if (!android_callbacks_add_registered(ctx, pk_str)) return;
     LOGI("registered client pk");
     /* base64 is plain ASCII, valid Modified UTF-8 for NewStringUTF */
@@ -362,7 +362,15 @@ static void _register_client(void *cls, const char *device_id, const char *pk_st
     if (!env) return;
     jstring jpk = (*env)->NewStringUTF(env, pk_str);
     if (!jpk) return;
-    (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_client_registered, jpk);
+    /* the sender's name is UTF-8 and may hold emoji, which NewStringUTF (Modified UTF-8) rejects:
+       hand over the bytes and decode them in Kotlin */
+    size_t name_len = name ? strnlen(name, 256) : 0;
+    jbyteArray jname = (*env)->NewByteArray(env, (jsize)name_len);
+    if (!jname) { (*env)->DeleteLocalRef(env, jpk); return; }
+    if (name_len) (*env)->SetByteArrayRegion(env, jname, 0, (jsize)name_len, (const jbyte *)name);
+    (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_client_registered, jpk, jname);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    (*env)->DeleteLocalRef(env, jname);
     (*env)->DeleteLocalRef(env, jpk);
 }
 

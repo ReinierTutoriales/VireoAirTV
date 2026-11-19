@@ -947,14 +947,32 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _mainHandler.post { if (_connectionCount.value > 0) _restartServer() }
     }
 
-    override fun onClientRegistered(publicKey: String) {
-        trustedClients.add(publicKey)
-        log("Sender paired with the PIN; it will not be asked again")
+    override fun onClientRegistered(publicKey: String, name: ByteArray) {
+        val deviceName = String(name, Charsets.UTF_8)
+        trustedClients.add(publicKey, deviceName)
+        _trustedDevices.value = trustedClients.entries()
+        log("Sender paired with the PIN ($deviceName); it will not be asked again")
     }
+
+    private val _trustedDevices = MutableStateFlow<List<TrustedClients.Entry>>(emptyList())
+    val trustedDevices: StateFlow<List<TrustedClients.Entry>> = _trustedDevices.asStateFlow()
+
+    fun refreshTrustedDevices() { _trustedDevices.value = trustedClients.entries() }
 
     /** Forgets every PIN pairing; the next connection of each sender asks for the PIN again. */
     fun forgetTrustedClients() {
         trustedClients.clear()
+        _trustedDevices.value = emptyList()
+        _restartServer()
+    }
+
+    /**
+     * Forgets one sender. The native list is loaded when the server starts, so it restarts like
+     * [forgetTrustedClients]: that sender is asked for the PIN on its next connection.
+     */
+    fun forgetTrustedClient(publicKey: String) {
+        trustedClients.remove(publicKey)
+        _trustedDevices.value = trustedClients.entries()
         _restartServer()
     }
 

@@ -15,7 +15,7 @@ interface RaopCallbackHandler {
     // client heartbeat (POST /feedback), about every 2 s while a client is connected
     fun onConnectionFeedback()
     // a client completed PIN pairing; its Ed25519 key (base64) is trusted without a PIN from now on
-    fun onClientRegistered(publicKey: String)
+    fun onClientRegistered(publicKey: String, name: ByteArray)
     fun onDisplayPin(pin: String)
     fun onMetadata(data: ByteArray)
     fun onCoverArt(data: ByteArray)

@@ -323,6 +323,8 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         updateFromService()
         _serviceJobs = viewModelScope.launch {
             launch { svc.serverState.collect { _serverState.value = it } }
+            svc.refreshTrustedDevices()
+            launch { svc.trustedDevices.collect { _trustedDevices.value = it } }
             launch { svc.connectionCount.collect { _connectionCount.value = it } }
             launch { svc.videoAspect.collect { _videoAspect.value = it } }
             launch { svc.videoResolution.collect { _videoResolution.value = it } }
@@ -486,6 +488,14 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     fun forgetTrustedClients() {
         service?.forgetTrustedClients()
     }
+
+    fun forgetTrustedClient(publicKey: String) {
+        service?.forgetTrustedClient(publicKey)
+    }
+
+    private val _trustedDevices = MutableStateFlow<List<io.github.jqssun.airplay.service.TrustedClients.Entry>>(emptyList())
+    /** Senders that paired with the PIN, oldest first. */
+    val trustedDevices: StateFlow<List<io.github.jqssun.airplay.service.TrustedClients.Entry>> = _trustedDevices.asStateFlow()
 
     fun selectVideoTrack(type: Int, choice: TrackChoice) {
         service?.selectVideoTrack(type, choice)

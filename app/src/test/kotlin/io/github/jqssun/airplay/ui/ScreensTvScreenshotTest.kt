@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.assertIsDisplayed
@@ -102,6 +103,22 @@ class ScreensTvScreenshotTest {
             compose.onNodeWithText("Settings").performClick()
         }
         save("tv_settings")
+    }
+
+    @Test fun settingsPairedDevices() {
+        vm.set(io.github.jqssun.airplay.Prefs.REQUIRE_PIN, true)
+        set("_trustedDevices", listOf(
+            io.github.jqssun.airplay.service.TrustedClients.Entry("a", "iPhone de Reinier"),
+            io.github.jqssun.airplay.service.TrustedClients.Entry("b", ""),
+        ))
+        render {
+            openToolMenu()
+            compose.onNodeWithText("Settings").performClick()
+        }
+        compose.onNodeWithText("iPhone de Reinier").performScrollTo().assertExists()
+        compose.onNodeWithText("Paired device").assertExists()
+        save("tv_settings_paired")
+        vm.set(io.github.jqssun.airplay.Prefs.REQUIRE_PIN, false)
     }
 
     @Test fun logs() {
