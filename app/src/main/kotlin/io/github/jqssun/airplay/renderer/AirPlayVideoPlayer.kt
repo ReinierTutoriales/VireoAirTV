@@ -52,8 +52,11 @@ class AirPlayVideoPlayer(private val context: Context) {
         DefaultBandwidthMeter.Builder(context).setInitialBitrateEstimate(INITIAL_BITRATE_ESTIMATE_BPS).build()
     }
     // senders hand over URLs meant for an Apple TV; some CDNs reject other user agents (UxPlay PR #625)
+    // and third-party web players often redirect between http and https
     private val mediaSourceFactory by lazy {
-        val http = DefaultHttpDataSource.Factory().setUserAgent(HLS_USER_AGENT)
+        val http = DefaultHttpDataSource.Factory()
+            .setUserAgent(HLS_USER_AGENT)
+            .setAllowCrossProtocolRedirects(true)
         val data = DefaultDataSource.Factory(context, http)
         HlsAwareFactory(
             HlsMediaSource.Factory(data).setPlaylistParserFactory(YtDubFilterParserFactory()),
