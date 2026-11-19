@@ -27,7 +27,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -121,6 +120,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     val videoRenderer = VideoRenderer(this)
     val audioRenderer = AudioRenderer()
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    private val audioFocus by lazy { AudioFocus(audioManager) }
     val airPlayVideoPlayer by lazy { AirPlayVideoPlayer(this) }
     val videoDownloader by lazy { VideoDownloader(this) }
 
@@ -638,6 +638,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         airPlayVideoPlayer.stop()
         _setSessionActive(false)
         _transition(SessionEvent.ServerStopped)
+        audioFocus.release()
         _mirrorSize.value = null
         _videoPlaybackInfo.value = VideoPlaybackInfo()
         _lastVideoPollAt = 0
@@ -1081,7 +1082,12 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _audioOnly.value = next.music
         }
         if (prev == next) return
-        if (prev.screen != next.screen) log("Session: ${prev.screen} -> ${next.screen} ($event)")
+        if (prev.screen != next.screen) {
+            log("Session: ${prev.screen} -> ${next.screen} ($event)")
+            // content on screen holds the audio focus; waiting or gone gives it back
+            if (next.screen == Screen.IDLE || next.screen == Screen.CONNECTED) audioFocus.release()
+            else audioFocus.acquire()
+        }
         if (next.music != prev.music) {
             _refreshDacpPlayer()
             if (next.music) {
