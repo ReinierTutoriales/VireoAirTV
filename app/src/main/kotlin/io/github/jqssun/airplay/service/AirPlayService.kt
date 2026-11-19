@@ -753,6 +753,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onVideoPlay(location: String, startPositionSeconds: Float) {
+        if (_audioOnly.value) _setAudioOnly(false)
+        _mirroringActive.value = false
+        _mirrorSize.value = null
         _videoLocation.value = location
         _videoPlaySeq.value++
         _videoPollSuppressed = false
@@ -789,7 +792,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _localPauseAt = Long.MIN_VALUE / 2
             _setPlaying(true)
         }
-        if (!usingScreen && !_audioOnly.value) {
+        if (usingScreen) {
+            if (_audioOnly.value) _setAudioOnly(false)
+        } else if (!_audioOnly.value && !_mirroringActive.value && !_videoPlaybackActive.value) {
             // pure music streaming (not screen mirroring audio)
             _setAudioOnly(true)
         }
@@ -799,6 +804,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     override fun onVideoSize(srcW: Float, srcH: Float, w: Float, h: Float) {
         clearPin()
         if (w > 0 && h > 0) {
+            if (_audioOnly.value) _setAudioOnly(false)
             _videoAspect.value = w / h
             _videoResolution.value = "${w.toInt()}x${h.toInt()}"
             videoRenderer.setResolution(w.toInt(), h.toInt())
@@ -1058,7 +1064,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _mirroringActive.value = false
             _mirrorSize.value = null
         }
-        _setAudioOnly(!running)
+        if (running) _setAudioOnly(false) else if (!_videoPlaybackActive.value) _setAudioOnly(true)
     }
 
     private fun _setAudioOnly(audioOnly: Boolean) {

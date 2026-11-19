@@ -628,10 +628,7 @@ private fun MainScreenContent(
             fullscreen = false
             if (tv) showToolUi = true
         }
-        if (audioOnly && connections > 0) {
-            // Back leaves through the BackHandler above; the screen itself has no buttons to exit
-            NowPlayingTvScreen(viewModel)
-        } else if (mirroringActive) {
+        if (mirroringActive) {
             FullscreenVideo(
                 viewModel = viewModel,
                 video = video,
@@ -643,19 +640,15 @@ private fun MainScreenContent(
                 onPip = onPip,
                 quiet = tv
             )
+        } else if (audioOnly && connections > 0) {
+            // Back leaves through the BackHandler above; the screen itself has no buttons to exit
+            NowPlayingTvScreen(viewModel)
         } else {
             // between tracks or video items, hold black instead of flashing the app UI
             Box(Modifier.fillMaxSize().background(Color.Black))
         }
     } else if (tv && !showToolUi) {
         when {
-            audioOnly && connections > 0 -> {
-                BackHandler {
-                    userExitedFullscreen = true
-                    showToolUi = true
-                }
-                NowPlayingTvScreen(viewModel)
-            }
             mirroringActive -> {
                 BackHandler {
                     userExitedFullscreen = true
@@ -671,6 +664,13 @@ private fun MainScreenContent(
                     onPip = onPip,
                     quiet = true
                 )
+            }
+            audioOnly && connections > 0 -> {
+                BackHandler {
+                    userExitedFullscreen = true
+                    showToolUi = true
+                }
+                NowPlayingTvScreen(viewModel)
             }
             else -> TvStandbyScreen(
                 serverName = serverName,
