@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -356,9 +357,11 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
     DisposableEffect(Unit) { onDispose { if (scanning) viewModel.audioScanEnd() } }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
+    var rootFocused by remember { mutableStateOf(false) }
+    var buttonFocused by remember { mutableStateOf(false) }
     LaunchedEffect(controlsVisible) {
-        if (controlsVisible) playFocus.requestFocusUntilLanded(attempts = 5)
-        else runCatching { rootFocus.requestFocus() }
+        if (controlsVisible) playFocus.requestFocusUntilLanded(attempts = 10, isFocused = { buttonFocused })
+        else rootFocus.requestFocusUntilLanded(attempts = 10, isFocused = { rootFocused })
     }
 
     Box(
@@ -389,7 +392,14 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
                     Key.MediaNext -> send(SenderCommand.NEXT, Icons.Rounded.SkipNext)
                     Key.MediaPrevious -> send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious)
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter ->
-                        if (!controlsVisible) playPause() else { wake++; false }
+                        if (!controlsVisible || !buttonFocused) {
+                            playPause()
+                            wake++
+                            true
+                        } else {
+                            wake++
+                            false
+                        }
                     Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight -> {
                         val hidden = !controlsVisible
                         wake++
@@ -398,7 +408,9 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
                     else -> false
                 }
             }
+            .onFocusChanged { rootFocused = it.isFocused }
             .focusRequester(rootFocus)
+            .focusProperties { canFocus = !controlsVisible }
             .focusable(),
     ) {
         NowPlayingTv(
@@ -407,6 +419,7 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
             onPrevious = { send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious); wake++ },
             onPlayPause = { playPause(); wake++ },
             onNext = { send(SenderCommand.NEXT, Icons.Rounded.SkipNext); wake++ },
+            modifier = Modifier.onFocusChanged { buttonFocused = it.hasFocus },
             playPauseFocus = playFocus,
         )
         CommandFeedback(feedbackIcon, feedbackTick)

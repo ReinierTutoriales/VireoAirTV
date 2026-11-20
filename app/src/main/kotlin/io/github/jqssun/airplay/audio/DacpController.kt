@@ -145,6 +145,7 @@ class DacpController(ctx: Context) {
     private fun _send(path: String): ListenableFuture<Unit> {
         val result = SettableFuture.create<Unit>()
         if (!ready) {
+            if (dacpId.isNotEmpty()) mainHandler.post { _resolve() }
             result.setException(IOException("dacp endpoint not resolved"))
             return result
         }
