@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 20:35:00 -0500
+Subject: [PATCH] http_handlers: replace stale event channel and clean up HLS
+ connections on RAOP setup
+
+When an HLS video ends via POST /stop and the sender transitions to RAOP audio (e.g. YouTube Music audio) before starting a new video, the earlier CONNECTION_TYPE_EVENT socket stays open because 0063 exempts EVENT sockets from the 60 s idle timeout. The next POST /reverse then sees type_PTTH == 2 ("multiple EVENT (PTTH) connections are forbidden"), returns 200 OK instead of 101 Switching Protocols, and iOS falls back to streaming the video as RAOP audio-only with cover art.
+
+Remove any lingering CONNECTION_TYPE_EVENT sockets before upgrading a new POST /reverse connection, and remove stale HLS connections when starting a new mirroring or non-video audio stream in raop_handler_setup.
+---
+ lib/http_handlers.h | 14 +++++---------
+ lib/raop_handlers.h |  4 ++++
+ 2 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index d1a9957..c50c8f7 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -470,16 +470,12 @@ http_handler_reverse(raop_conn_t *conn, http_request_t *request, http_response_t
+     logger_log(raop->logger, LOGGER_INFO, "client requested reverse connection: %s; purpose: %s  \"%s\"",
+                connection, upgrade, purpose);
+ 
++    /* a new HLS session replaces any lingering reverse-HTTP event channel from an earlier video */
++    httpd_remove_connections_by_type(raop->httpd, CONNECTION_TYPE_EVENT);
+     httpd_set_connection_type(raop->httpd, (void *) conn, CONNECTION_TYPE_EVENT);
+-    int type_PTTH = httpd_count_connection_type(raop->httpd, CONNECTION_TYPE_EVENT);
+-
+-    if (type_PTTH == 1) {
+-        logger_log(raop->logger, LOGGER_DEBUG, "will use socket %d for %s connections", socket_fd, purpose);
+-        http_response_init(response, "HTTP/1.1", 101, "Switching Protocols");
+-        http_response_add_header(response, "Connection", "Upgrade");
+-        http_response_add_header(response, "Upgrade", "PTTH/1.0");
+-    } else {
+-        logger_log(raop->logger, LOGGER_ERR, "multiple EVENT (PTTH) connections (%d) are forbidden", type_PTTH );
+-    }    
++    logger_log(raop->logger, LOGGER_DEBUG, "will use socket %d for %s connections", socket_fd, purpose);
++    http_response_init(response, "HTTP/1.1", 101, "Switching Protocols");
++    http_response_add_header(response, "Connection", "Upgrade");
++    http_response_add_header(response, "Upgrade", "PTTH/1.0");
+ }
+ 
+ /* the POST /action request from Client to Server on the AirPlay http channel follows a POST /event "FCUP Request"
+diff --git a/lib/raop_handlers.h b/lib/raop_handlers.h
+index 0d63ab1..f827c9d 100644
+--- a/lib/raop_handlers.h
++++ b/lib/raop_handlers.h
+@@ -995,6 +995,7 @@ raop_handler_setup(raop_conn_t *conn,
+             case 110: {
+                 // Mirroring
+                 raop_destroy_airplay_video(raop, -1);  //cleanup any hls data still present when mirror video starts
++                raop_remove_hls_connections(raop);
+                 unsigned short dport = raop->mirror_data_lport;
+                 plist_t stream_id_node = plist_dict_get_item(req_stream_node, "streamConnectionID");
+                 uint64_t stream_connection_id = 0;
+@@ -1022,6 +1023,9 @@ raop_handler_setup(raop_conn_t *conn,
+                 }
+             case 96: {
+                 // Audio
++                if (!raop->video_play_conn) {
++                    raop_remove_hls_connections(raop);
++                }
+                 unsigned short cport = raop->control_lport, dport = raop->data_lport; 
+                 unsigned short remote_cport = 0;
+                 unsigned char ct = 0;
+-- 
+2.43.0
