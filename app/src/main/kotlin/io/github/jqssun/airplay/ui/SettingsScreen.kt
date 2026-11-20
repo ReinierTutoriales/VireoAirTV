@@ -90,16 +90,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
     ) {
         SectionHeader(stringResource(R.string.section_server))
 
-        SettingTextField(
-            label = stringResource(R.string.setting_server_name),
+        SettingChipField(
+            title = stringResource(R.string.setting_server_name),
+            description = null,
             value = serverName,
-            onCommit = { viewModel.set(Prefs.SERVER_NAME, it) }
-        )
-
-        RoomNameChips(
-            serverName = serverName,
-            onSelect = { viewModel.set(Prefs.SERVER_NAME, it) },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            presets = rememberRoomPresets(),
+            placeholder = stringResource(R.string.setting_server_name),
+            onValueChange = { viewModel.set(Prefs.SERVER_NAME, it) }
         )
 
         SettingTextField(
@@ -649,7 +646,7 @@ private fun SettingTextField(
 @Composable
 private fun SettingChipField(
     title: String,
-    description: String,
+    description: String?,
     value: String,
     presets: List<Pair<String, String>>,
     placeholder: String,
@@ -664,8 +661,12 @@ private fun SettingChipField(
         headlineContent = { Text(title) },
         supportingContent = {
             Column {
-                Text(description)
-                Spacer(Modifier.height(8.dp))
+                if (description != null) {
+                    Text(description)
+                    Spacer(Modifier.height(8.dp))
+                } else {
+                    Spacer(Modifier.height(4.dp))
+                }
                 ChipRow(if (editing) "" else value, presets, { editing = false; text = ""; onValueChange(it) }) {
                     FilterChip(
                         selected = !isPreset || editing,
@@ -700,20 +701,25 @@ private fun SettingChipField(
 }
 
 @Composable
-internal fun RoomNameChips(
-    serverName: String,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
+internal fun rememberRoomPresets(): List<Pair<String, String>> {
     val context = LocalContext.current
     val deviceName = remember(context) { Prefs.deviceServerName(context) }
-    val rooms = buildList {
+    return buildList {
         if (deviceName != null) add(deviceName)
         add(stringResource(R.string.room_living))
         add(stringResource(R.string.room_bedroom))
         add(stringResource(R.string.room_dining))
         add(stringResource(R.string.room_office))
     }.distinct().map { it to it }
+}
+
+@Composable
+internal fun RoomNameChips(
+    serverName: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val rooms = rememberRoomPresets()
     Box(modifier = modifier) {
         ChipRow(
             value = serverName,
