@@ -165,12 +165,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private val _videoResolution = MutableStateFlow("")
     val videoResolution = _videoResolution.asStateFlow()
 
-    private val _audioOnly = MutableStateFlow(false)
-    val audioOnly = _audioOnly.asStateFlow()
-
-    private val _videoPlaybackActive = MutableStateFlow(false)
-    val videoPlaybackActive = _videoPlaybackActive.asStateFlow()
-
     private val _videoPlaybackInfo = MutableStateFlow(VideoPlaybackInfo())
     val videoPlaybackInfo = _videoPlaybackInfo.asStateFlow()
 
@@ -203,15 +197,13 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     @Volatile private var _videoHandoffUntil = 0L
 
     fun videoSessionPending(): Boolean {
-        if (_videoPlaybackActive.value || _audioOnly.value || _mirroringActive.value) return false
+        val s = _session.value
+        if (s.video || s.music || s.mirroring) return false
         val now = SystemClock.elapsedRealtime()
         if (now < _videoHandoffUntil && _connectionCount.value > 0) return true
         return !_videoPollSuppressed && now - _lastVideoPollAt < VIDEO_POLL_PENDING_TIMEOUT_MS
     }
 
-    // set once mirroring reports a real size; stops with session
-    private val _mirroringActive = MutableStateFlow(false)
-    val mirroringActive = _mirroringActive.asStateFlow()
     // decoded mirroring stream size; null when no mirroring stream
     private val _mirrorSize = MutableStateFlow<Pair<Int, Int>?>(null)
     val mirrorSize = _mirrorSize.asStateFlow()
@@ -303,7 +295,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                     artworkData = _coverArtBytes,
                     durationMs = _durationMs.value,
                     playing = _playing.value,
-                    active = _audioOnly.value && _connectionCount.value > 0,
+                    active = _session.value.music && _connectionCount.value > 0,
                 )
             },
             positionMs = ::currentPositionMs,
@@ -311,7 +303,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         )
         sessionPlayer = SessionPlayer(mainLooper, VIDEO_SEEK_STEP_MS, ::_sessionSnapshot, object : SessionPlayer.Controls {
             override fun setPlaying(playing: Boolean) {
-                if (_videoPlaybackActive.value) {
+                if (_session.value.video) {
                     airPlayVideoPlayer.setPlaying(playing)
                     return
                 }
@@ -319,16 +311,16 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 dacpController?.let { if (playing) it.play() else it.pause() }
             }
             override fun stop() {
-                if (_videoPlaybackActive.value) stopVideoPlayback()
+                if (_session.value.video) stopVideoPlayback()
             }
             override fun seekTo(positionMs: Long) {
-                if (_videoPlaybackActive.value) airPlayVideoPlayer.scrub(positionMs / 1000f)
+                if (_session.value.video) airPlayVideoPlayer.scrub(positionMs / 1000f)
             }
             override fun next() {
-                if (!_videoPlaybackActive.value) dacpController?.nextItem()
+                if (!_session.value.video) dacpController?.nextItem()
             }
             override fun previous() {
-                if (!_videoPlaybackActive.value) dacpController?.prevItem()
+                if (!_session.value.video) dacpController?.prevItem()
             }
         })
         mediaReceiver = object : BroadcastReceiver() {
@@ -377,7 +369,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             if (nativeHandle != 0L) {
                 NativeBridge.nativeUpdatePlaybackInfo(nativeHandle, snapshot.position, snapshot.duration, snapshot.rate, snapshot.ready, !snapshot.playWhenReady)
             }
-            if (_videoPlaybackActive.value) {
+            if (_session.value.video) {
                 _updateVideoPlaybackState(snapshot.position, snapshot.rate)
                 _videoPlaybackInfo.value = VideoPlaybackInfo(
                     positionMs = (snapshot.position * 1000).toLong(),
@@ -735,13 +727,13 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     // handoff = the sender (or the end of the item) stopped it: a next item usually follows within seconds
     private fun _endVideoPlayback(message: String, handoff: Boolean = true) {
-        if (!_videoPlaybackActive.value) return
+        if (!_session.value.video) return
         // lingering polls after a stop must not bounce the UI back to a pending session
         _videoPollSuppressed = true
         _videoHandoffUntil = if (handoff) SystemClock.elapsedRealtime() + VIDEO_HANDOFF_GRACE_MS else 0L
         _transition(SessionEvent.VideoEnded)
         airPlayVideoPlayer.stop()
-        if (!_audioOnly.value) _setSessionActive(false)
+        if (!_session.value.music) _setSessionActive(false)
         log(message)
     }
 
@@ -815,9 +807,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             // a new audio stream is the sender resuming, whatever was paused from the TV
             _localPauseAt = Long.MIN_VALUE / 2
             _setPlaying(true)
-            // if the previous stream tore down and the new app sends no metadata within 1.5 s, drop the old track
+            // if the previous stream ended (or a new app opened a stream before tearing down the old one)
+            // and no DMAP metadata arrives within 1.5 s, drop the old track so its cover art never sticks
             _mainHandler.removeCallbacks(_clearStaleTrackTask)
-            if (!_session.value.musicStream && _trackInfo.value.title.isNotEmpty() &&
+            if (_trackInfo.value.title.isNotEmpty() &&
                 SystemClock.elapsedRealtime() - _metadataAtMs > STALE_METADATA_GRACE_MS
             ) {
                 _mainHandler.postDelayed(_clearStaleTrackTask, STALE_METADATA_GRACE_MS)
@@ -1073,20 +1066,24 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _feedbackSeen = true
     }
 
-    // a client that stops sending /feedback is gone (sleep, Wi-Fi lost, out of range): its last frame
-    // would stay on screen and block new senders, so drop it after the same limit as UxPlay (-reset 15)
+    // a mirroring client that stops sending /feedback is gone (sleep, Wi-Fi lost, out of range): its last frame
+    // would stay on screen and block new senders, so drop it after the same limit as UxPlay (-reset 15).
+    // Audio-only, HLS video and idle connections use keepAliveLowPower (iOS stops /feedback when the screen locks).
     @Volatile private var _lastFeedbackNs = 0L
-    // only a client that has sent /feedback is held to it; AirPlay video (HLS) has its own polling
     @Volatile private var _feedbackSeen = false
     private val _feedbackWatchdog = object : Runnable {
         override fun run() {
-            val silentMs = (System.nanoTime() - _lastFeedbackNs) / 1_000_000
-            if (_connectionCount.value == 0) _feedbackSeen = false
-            // HLS playback counts as alive, so its end does not look like a long silence
-            if (_videoPlaybackActive.value) _lastFeedbackNs = System.nanoTime()
-            else if (_connectionCount.value > 0 && _feedbackSeen && silentMs > MISSED_FEEDBACK_LIMIT_MS) {
-                log("No feedback from the client for ${silentMs / 1000} s; dropping it")
-                _restartServer()
+            val s = _session.value
+            if (_connectionCount.value == 0 || !s.mirroring) {
+                _feedbackSeen = false
+            } else if (s.video) {
+                _lastFeedbackNs = System.nanoTime()
+            } else {
+                val silentMs = (System.nanoTime() - _lastFeedbackNs) / 1_000_000
+                if (_feedbackSeen && silentMs > MISSED_FEEDBACK_LIMIT_MS) {
+                    log("No feedback from the client for ${silentMs / 1000} s; dropping it")
+                    _restartServer()
+                }
             }
             _mainHandler.postDelayed(this, FEEDBACK_CHECK_MS)
         }
@@ -1229,10 +1226,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             prev = _session.value
             next = prev.on(event)
             _session.value = next
-            // the older flows stay, derived here, until every reader uses [session]
-            _mirroringActive.value = next.mirroring
-            _videoPlaybackActive.value = next.video
-            _audioOnly.value = next.music
         }
         if (prev == next) return
         if (prev.screen != next.screen) {
@@ -1297,7 +1290,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private fun _updatePlaybackState() {
         // the sender's silent raop audio session must not overwrite video session state
-        if (_videoPlaybackActive.value) return
+        if (_session.value.video) return
         _refreshSession()
         _updateMediaNotification()
     }
@@ -1342,7 +1335,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _sessionSnapshot(): SessionPlayer.Snapshot {
-        if (_videoPlaybackActive.value) {
+        val s = _session.value
+        if (s.video) {
             val info = _videoPlaybackInfo.value
             return SessionPlayer.Snapshot(
                 mode = SessionPlayer.Mode.VIDEO,
@@ -1353,7 +1347,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 speed = info.speed,
             )
         }
-        if (!_audioOnly.value || _connectionCount.value == 0) return SessionPlayer.Snapshot(SessionPlayer.Mode.IDLE)
+        if (!s.music || _connectionCount.value == 0) return SessionPlayer.Snapshot(SessionPlayer.Mode.IDLE)
         val track = _trackInfo.value
         return SessionPlayer.Snapshot(
             mode = SessionPlayer.Mode.AUDIO,
@@ -1487,7 +1481,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         val intent = Intent(this, MainActivity::class.java)
         val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         val info = _trackInfo.value
-        val isAudio = _audioOnly.value && info.title.isNotEmpty()
+        val isAudio = _session.value.music && info.title.isNotEmpty()
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)

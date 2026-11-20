@@ -72,7 +72,7 @@ fun FadeFromBlack(active: Boolean, modifier: Modifier = Modifier, key: Any? = nu
 }
 
 /**
- * Cover art as a soft, dimmed backdrop. The art is reduced to a few pixels once per track and
+ * Cover art as a soft, dimmed backdrop. The art is reduced to a small sample once per track and
  * scaled up with filtering, which costs nothing per frame; API 31+ adds a real blur on top.
  */
 @Composable
@@ -94,7 +94,7 @@ fun ArtworkBackdrop(coverArt: Bitmap?, modifier: Modifier = Modifier) {
                     filterQuality = FilterQuality.High,
                     modifier = Modifier
                         .fillMaxSize()
-                        .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp) else Modifier)
+                        .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(72.dp) else Modifier)
                 )
             }
         }
@@ -102,13 +102,21 @@ fun ArtworkBackdrop(coverArt: Bitmap?, modifier: Modifier = Modifier) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.35f), Color.Black.copy(alpha = 0.7f))))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = 0.28f),
+                                Color.Black.copy(alpha = 0.45f),
+                                Color.Black.copy(alpha = 0.68f),
+                            )
+                        )
+                    )
             )
         }
     }
 }
 
-private const val BACKDROP_PX = 24
+private const val BACKDROP_PX = 64
 
 /**
  * tvOS-like acknowledgement of a remote command: a small translucent disc with the action's icon

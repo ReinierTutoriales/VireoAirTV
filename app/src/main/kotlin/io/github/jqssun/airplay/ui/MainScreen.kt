@@ -7,20 +7,12 @@ import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.annotation.OptIn as AndroidxOptIn
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,22 +25,15 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.*
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.*
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -56,35 +41,22 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.ui.compose.material3.MiniController
-import androidx.media3.ui.compose.material3.buttons.NextButton
-import androidx.media3.ui.compose.material3.buttons.PlayPauseButton
-import androidx.media3.ui.compose.material3.buttons.PreviousButton
-import androidx.media3.ui.compose.material3.indicator.DurationText
-import androidx.media3.ui.compose.material3.indicator.PositionText
-import androidx.media3.ui.compose.material3.indicator.ProgressSlider
-import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
 import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.R
-import io.github.jqssun.airplay.audio.TrackInfo
 import io.github.jqssun.airplay.service.AirPlayService.ServerState
 import io.github.jqssun.airplay.ui.gestures.BrightnessState
 import io.github.jqssun.airplay.ui.gestures.DoubleTapIndicator
@@ -94,7 +66,6 @@ import io.github.jqssun.airplay.ui.gestures.ServerVolumeState
 import io.github.jqssun.airplay.ui.gestures.TapGestureState
 import io.github.jqssun.airplay.ui.gestures.VerticalGesture
 import io.github.jqssun.airplay.ui.gestures.VerticalProgressIndicator
-import io.github.jqssun.airplay.ui.gestures.VideoContentScale
 import io.github.jqssun.airplay.ui.gestures.VideoPlayerGestures
 import io.github.jqssun.airplay.ui.gestures.VolumeAndBrightnessGestureState
 import io.github.jqssun.airplay.ui.gestures.ZoomState
@@ -103,7 +74,6 @@ import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import io.github.jqssun.airplay.viewmodel.SenderCommand
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private enum class Tab(val labelRes: Int, val icon: ImageVector) {
@@ -342,9 +312,9 @@ private fun MainScreenContent(
         val unlockFocusRequester = remember { FocusRequester() }
         var isPlayPauseFocused by remember { mutableStateOf(false) }
         var isUnlockFocused by remember { mutableStateOf(false) }
-        LaunchedEffect(overlayVisible, controlsLocked, showSpeedSelector, showTrackSelector) {
+        LaunchedEffect(overlayVisible, videoPlaybackActive, controlsLocked, showSpeedSelector, showTrackSelector) {
             if (showSpeedSelector || showTrackSelector) return@LaunchedEffect
-            if (!overlayVisible) {
+            if (!overlayVisible || !videoPlaybackActive) {
                 runCatching { rootFocusRequester.requestFocus() }
                 return@LaunchedEffect
             }
@@ -830,9 +800,7 @@ private fun OverviewContent(
             val connecting = state == ServerState.RUNNING && connections > 0 &&
                 !mirroringActive && !videoPlaybackActive
             if (showAudioMode && state == ServerState.RUNNING && connections > 0) {
-                // on a TV the card shows the same Apple TV style screen as full screen
-                if (tv) NowPlayingTvCard(viewModel, onOpen = onFullscreen, focusRequester = nowPlayingFocus)
-                else NowPlayingContent(viewModel, onFullscreen = onFullscreen)
+                NowPlayingTvCard(viewModel, onOpen = onFullscreen, focusRequester = nowPlayingFocus)
             } else {
                 if (state == ServerState.RUNNING && (mirroringActive || idlePreview)) {
                     video()
@@ -1096,71 +1064,6 @@ private fun FullscreenVideo(
     }
 }
 
-// dacp scanning is press-and-hold: beginff/beginrew while held, playresume on release
-@Composable
-private fun HoldScanButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onBegin: () -> Unit,
-    onEnd: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val currentBegin by rememberUpdatedState(onBegin)
-    val currentEnd by rememberUpdatedState(onEnd)
-    var keyScanning by remember { mutableStateOf(false) }
-    DisposableEffect(Unit) {
-        onDispose { if (keyScanning) currentEnd() }
-    }
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .dpadFocus(CircleShape)
-            .clip(CircleShape)
-            .onPreviewKeyEvent { e ->
-                when (e.key) {
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when (e.type) {
-                        KeyEventType.KeyDown -> {
-                            if (!keyScanning) {
-                                keyScanning = true
-                                currentBegin()
-                            }
-                            true
-                        }
-                        KeyEventType.KeyUp -> {
-                            if (keyScanning) {
-                                keyScanning = false
-                                currentEnd()
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                    else -> false
-                }
-            }
-            .onFocusChanged {
-                if (!it.isFocused && keyScanning) {
-                    keyScanning = false
-                    currentEnd()
-                }
-            }
-            .focusable()
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    currentBegin()
-                    try {
-                        awaitRelease()
-                    } finally {
-                        currentEnd()
-                    }
-                })
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, contentDescription)
-    }
-}
-
 @Composable
 @AndroidxOptIn(UnstableApi::class)
 private fun AudioMiniController(viewModel: MainViewModel, visible: Boolean, onClick: () -> Unit) {
@@ -1173,314 +1076,6 @@ private fun AudioMiniController(viewModel: MainViewModel, visible: Boolean, onCl
         onClick = onClick
     )
 }
-
-// phones and tablets; a TV uses NowPlayingTvCard / NowPlayingTvScreen
-@Composable
-@AndroidxOptIn(UnstableApi::class)
-private fun NowPlayingContent(viewModel: MainViewModel, onFullscreen: () -> Unit) {
-    val track by viewModel.trackInfo.collectAsState()
-    val hasArt = track.coverArt != null
-    // over the dimmed backdrop, text and icons read as on tvOS: white and translucent white
-    val base = MaterialTheme.colorScheme
-    val colors = if (hasArt) base.copy(
-        onSurface = Color.White,
-        onSurfaceVariant = Color.White.copy(alpha = 0.72f),
-        surfaceContainerHighest = Color.White.copy(alpha = 0.12f)
-    ) else base
-
-    val player = viewModel.dacpPlayer
-    // artwork recedes while paused, like the Music app
-    val playing = player?.let { !rememberPlayPauseButtonState(it).showPlay } ?: true
-    val artScale by animateFloatAsState(
-        targetValue = if (playing) 1f else 0.86f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
-        label = "artScale"
-    )
-    val playPauseFocus = remember { FocusRequester() }
-
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        ArtworkBackdrop(track.coverArt, Modifier.matchParentSize())
-        MaterialTheme(colorScheme = colors) {
-            CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    if (maxWidth > maxHeight) {
-                        Row(
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
-                        ) {
-                            NowPlayingArtwork(
-                                coverArt = track.coverArt,
-                                hasArt = hasArt,
-                                artScale = artScale,
-                                modifier = Modifier.fillMaxHeight(0.88f).aspectRatio(1f, matchHeightConstraintsFirst = true)
-                            )
-                            // centred when it fits; the card can be shorter than text, progress, transport and
-                            // both volume rows, so the column scrolls instead of being cut off
-                            Box(
-                                modifier = Modifier.weight(1f).widthIn(max = 560.dp).fillMaxHeight(),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Column(Modifier.verticalScroll(rememberScrollState())) {
-                                    NowPlayingTrackText(track = track, fullscreen = false, centered = false)
-                                    if (player != null) {
-                                        Spacer(Modifier.height(10.dp))
-                                        NowPlayingProgress(player)
-                                        Spacer(Modifier.height(8.dp))
-                                        NowPlayingTransportAndVolume(viewModel, player, playPauseFocus)
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            NowPlayingArtwork(
-                                coverArt = track.coverArt,
-                                hasArt = hasArt,
-                                artScale = artScale,
-                                modifier = Modifier
-                                    .weight(1f, fill = false)
-                                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
-                                    .fillMaxWidth(0.7f)
-                            )
-                            Spacer(Modifier.height(20.dp))
-                            NowPlayingTrackText(track = track, fullscreen = false, centered = true)
-                            if (player != null) {
-                                Spacer(Modifier.height(16.dp))
-                                NowPlayingProgress(player)
-                                Spacer(Modifier.height(8.dp))
-                                NowPlayingTransportAndVolume(viewModel, player, playPauseFocus)
-                            }
-                        }
-                    }
-                    IconButton(
-                        onClick = onFullscreen,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).dpadFocus()
-                    ) {
-                        Icon(
-                            Icons.Default.Fullscreen,
-                            contentDescription = stringResource(R.string.cd_fullscreen),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NowPlayingArtwork(
-    coverArt: android.graphics.Bitmap?,
-    hasArt: Boolean,
-    artScale: Float,
-    modifier: Modifier = Modifier,
-) {
-    val artShape = RoundedCornerShape(16.dp)
-    Box(
-        modifier = modifier
-            .graphicsLayer { scaleX = artScale; scaleY = artScale }
-            .shadow(if (hasArt) 24.dp else 0.dp, artShape)
-            .clip(artShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-        contentAlignment = Alignment.Center
-    ) {
-        Crossfade(
-            targetState = coverArt,
-            animationSpec = tween(Motion.LONG_MS, easing = Motion.Ease),
-            label = "coverArt"
-        ) { art ->
-            if (art != null) {
-                Image(
-                    bitmap = art.asImageBitmap(),
-                    contentDescription = stringResource(R.string.cd_cover_art),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.MusicNote,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NowPlayingTrackText(track: TrackInfo, fullscreen: Boolean, centered: Boolean) {
-    Crossfade(
-        targetState = Triple(track.title, track.artist, track.album),
-        animationSpec = tween(Motion.MEDIUM_MS, easing = Motion.Ease),
-        label = "trackText"
-    ) { (title, artist, album) ->
-        Column(
-            horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start
-        ) {
-            Text(
-                text = title.ifEmpty { stringResource(R.string.unknown_track) },
-                style = if (fullscreen) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = if (fullscreen) 2 else 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (artist.isNotEmpty()) {
-                Text(
-                    text = artist,
-                    style = if (fullscreen) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (album.isNotEmpty()) {
-                Text(
-                    text = album,
-                    style = if (fullscreen) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
-@AndroidxOptIn(UnstableApi::class)
-private fun NowPlayingProgress(player: androidx.media3.common.Player) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        PositionText(player, Modifier.padding(end = 8.dp))
-        Box(modifier = Modifier.weight(1f)) { ProgressSlider(player) }
-        DurationText(player, Modifier.padding(start = 8.dp))
-    }
-}
-
-@Composable
-@AndroidxOptIn(UnstableApi::class)
-private fun NowPlayingTransportAndVolume(
-    viewModel: MainViewModel,
-    player: androidx.media3.common.Player,
-    playPauseFocus: FocusRequester,
-) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        HoldScanButton(
-            icon = Icons.Default.FastRewind,
-            contentDescription = stringResource(R.string.cd_rewind),
-            onBegin = { viewModel.audioScanBegin(false) },
-            onEnd = { viewModel.audioScanEnd() }
-        )
-        PreviousButton(player, modifier = Modifier.dpadFocus())
-        PlayPauseButton(
-            player,
-            modifier = Modifier
-                .size(63.dp)
-                .focusRequester(playPauseFocus)
-                .dpadFocus(CircleShape),
-            iconSize = 40.dp
-        )
-        NextButton(player, modifier = Modifier.dpadFocus())
-        HoldScanButton(
-            icon = Icons.Default.FastForward,
-            contentDescription = stringResource(R.string.cd_fast_forward),
-            onBegin = { viewModel.audioScanBegin(true) },
-            onEnd = { viewModel.audioScanEnd() }
-        )
-    }
-
-    Spacer(Modifier.height(8.dp))
-
-    val context = LocalContext.current
-    val serverVolume = remember { ServerVolumeState(context) }
-    DisposableEffect(serverVolume) { serverVolume.handleLifecycle(this) }
-    VolumeSlider(
-        icon = painterResource(R.drawable.ic_download),
-        label = stringResource(R.string.volume_server),
-        value = serverVolume.percentage / 100f,
-        onValueChange = { serverVolume.update((it * 100).roundToInt()) },
-        onStep = { serverVolume.adjust(it > 0) }
-    )
-
-    val clientVolume by viewModel.clientVolume.collectAsState()
-    val clientAdjustable by viewModel.clientVolumeAdjustable.collectAsState()
-    // sender reports back only after each dacp step
-    var clientDrag by remember { mutableStateOf<Float?>(null) }
-    val clientShown = clientDrag ?: clientVolume
-    VolumeSlider(
-        icon = painterResource(R.drawable.ic_upload),
-        label = stringResource(R.string.volume_client),
-        value = clientShown,
-        enabled = clientAdjustable,
-        onValueChange = { clientDrag = it; viewModel.setClientVolume(it) },
-        onValueChangeFinished = { clientDrag = null },
-        onStep = { viewModel.setClientVolume((clientShown + it * CLIENT_VOLUME_STEP).coerceIn(0f, 1f)) }
-    )
-}
-
-@Composable
-private fun VolumeSlider(
-    icon: Painter,
-    label: String,
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    onStep: (Int) -> Unit,
-    enabled: Boolean = true,
-    onValueChangeFinished: (() -> Unit)? = null
-) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(min = 96.dp, max = 136.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            onValueChangeFinished = onValueChangeFinished,
-            modifier = Modifier
-                .weight(1f)
-                .height(32.dp)
-                .semantics { contentDescription = label }
-                .dpadFocus()
-                .dpadAdjust(onLeft = { onStep(-1) }, onRight = { onStep(1) })
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = stringResource(R.string.volume_value, (value * 100).roundToInt()),
-            style = MaterialTheme.typography.labelLarge,
-            textAlign = TextAlign.End,
-            modifier = Modifier.widthIn(min = 40.dp)
-        )
-    }
-}
-
-
-// sender has 16 volume steps above mute
-private const val CLIENT_VOLUME_STEP = 1f / 16
 
 private const val VIDEO_OVERLAY_HIDE_MS = 4000L
 

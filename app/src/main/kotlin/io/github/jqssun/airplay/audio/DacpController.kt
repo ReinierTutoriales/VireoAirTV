@@ -14,6 +14,7 @@ import java.io.IOException
 import java.net.Inet4Address
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 /**
@@ -104,7 +105,7 @@ class DacpController(ctx: Context) {
             override fun onServiceLost() {}
             override fun onServiceInfoCallbackUnregistered() {}
         }
-        nsdManager.registerServiceInfoCallback(info, Runnable::run, callback)
+        nsdManager.registerServiceInfoCallback(info, Executor { mainHandler.post(it) }, callback)
         infoCallback = callback
         // some Android TV 14 mDNS stacks never fire onServiceUpdated for a hand-built NsdServiceInfo;
         // fall back to resolveService if no address arrives shortly
