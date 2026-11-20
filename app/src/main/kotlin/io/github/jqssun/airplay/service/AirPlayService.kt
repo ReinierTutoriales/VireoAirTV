@@ -781,6 +781,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackSize.value = null
         _videoFrameShown.value = false
         _videoTitle.value = ""
+        // release the RAOP Oboe stream before ExoPlayer opens audio for HLS video
+        audioRenderer.stop()
         _transition(SessionEvent.VideoStarted)
         _launchForContent()
         airPlayVideoPlayer.play(location, startPositionSeconds)
@@ -807,12 +809,11 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             // a new audio stream is the sender resuming, whatever was paused from the TV
             _localPauseAt = Long.MIN_VALUE / 2
             _setPlaying(true)
-            // if the previous stream ended (or a new app opened a stream before tearing down the old one)
-            // and no DMAP metadata arrives within 1.5 s, drop the old track so its cover art never sticks
+            // whenever a new audio stream opens, arm a 1.5 s stale-track guard:
+            // if the new app sends DMAP metadata, onMetadata() cancels it immediately;
+            // if the new app sends no DMAP metadata (e.g. YouTube Music audio), clear the old app's track/artwork
             _mainHandler.removeCallbacks(_clearStaleTrackTask)
-            if (_trackInfo.value.title.isNotEmpty() &&
-                SystemClock.elapsedRealtime() - _metadataAtMs > STALE_METADATA_GRACE_MS
-            ) {
+            if (_trackInfo.value.title.isNotEmpty() || _trackInfo.value.coverArt != null) {
                 _mainHandler.postDelayed(_clearStaleTrackTask, STALE_METADATA_GRACE_MS)
             }
         } else {
@@ -1102,7 +1103,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     @Volatile private var _unclaimedCoverArtAtMs = 0L
     @Volatile private var _lastCoverArtHash = 0
     @Volatile private var _lastCoverArtSize = 0
-    @Volatile private var _metadataAtMs = 0L
     private val _clearStaleTrackTask = Runnable {
         // a new audio stream opened after teardown (e.g. switched to an app that sends no DMAP metadata):
         // clear the previous app's song and artwork so they do not stay stuck over the new audio
@@ -1123,7 +1123,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // some senders emit an empty DMAP frame on transitions; ignore it instead of wiping current metadata
         if (parsed.title.isEmpty() && parsed.artist.isEmpty() && parsed.album.isEmpty()) return
         _mainHandler.removeCallbacks(_clearStaleTrackTask)
-        _metadataAtMs = SystemClock.elapsedRealtime()
         val prev = _trackInfo.value
         val sameTrack = parsed.title == prev.title && parsed.artist == prev.artist && parsed.album == prev.album
         // iOS sometimes sends the new track's cover art just before its DMAP metadata; keep it only if unclaimed
@@ -1159,6 +1158,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= COVER_ART_MAX_PX) sample *= 2
         val bmp = BitmapFactory.decodeByteArray(data, 0, data.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
+        Log.d(TAG, "Cover art: ${bounds.outWidth}x${bounds.outHeight} sample=$sample")
         _lastCoverArtHash = hash
         _lastCoverArtSize = data.size
         // the session decodes artwork again: hand it the reduced image, not the sender's original

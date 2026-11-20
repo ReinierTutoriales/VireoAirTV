@@ -11,7 +11,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,11 +50,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,8 +63,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.res.stringResource
 import io.github.jqssun.airplay.R
 import androidx.compose.ui.layout.ContentScale
@@ -255,24 +252,39 @@ private fun NowPlayingInfo(
 
 @Composable
 private fun NowPlayingArt(artwork: Bitmap?, scale: Float, modifier: Modifier) {
-    val shape = RoundedCornerShape(16.dp * scale)
+    val shape = RoundedCornerShape(14.dp * scale)
     Box(
         modifier = modifier
-            .shadow(36.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .shadow(20.dp, shape, ambientColor = Color.Black.copy(alpha = 0.65f), spotColor = Color.Black.copy(alpha = 0.75f))
             .clip(shape)
-            .background(Brush.linearGradient(listOf(Color(0xFF2C2F3E), Color(0xFF1A1C24))))
-            .border(1.dp, Color.White.copy(alpha = 0.16f), shape),
+            .background(Brush.linearGradient(listOf(Color(0xFF2C2F3E), Color(0xFF1A1C24)))),
         contentAlignment = Alignment.Center,
     ) {
         Crossfade(artwork, animationSpec = tween(Motion.SHORT_MS, easing = Motion.Ease), label = "art") { bmp ->
             if (bmp != null) {
-                Image(bmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High,
+                    modifier = Modifier.fillMaxSize(),
+                )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.MusicNote, null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.fillMaxSize(0.4f))
                 }
             }
         }
+        // crisp specular rim drawn on top of the artwork so the rounded contour never aliases against the image
+        Box(
+            Modifier
+                .fillMaxSize()
+                .border(
+                    width = 0.75.dp,
+                    brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.24f), Color.White.copy(alpha = 0.06f))),
+                    shape = shape,
+                )
+        )
     }
 }
 
@@ -319,14 +331,19 @@ private fun TransportButton(icon: ImageVector, size: Dp, onClick: () -> Unit, mo
         modifier = modifier
             .size(size)
             .graphicsLayer { scaleX = lift; scaleY = lift }
-            .shadow(if (focused) 12.dp else 0.dp, CircleShape)
+            .shadow(if (focused) 14.dp else 0.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(CircleShape)
-            .background(if (focused) Color.White else Color.White.copy(alpha = 0.12f))
+            .background(if (focused) Color.White else Color.White.copy(alpha = 0.14f))
+            .border(
+                width = if (focused) 0.dp else 0.75.dp,
+                color = if (focused) Color.Transparent else Color.White.copy(alpha = 0.22f),
+                shape = CircleShape,
+            )
             .onFocusChanged { focused = it.isFocused }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = stringResource(label), tint = if (focused) Color.Black else Color.White, modifier = Modifier.fillMaxSize(0.58f))
+        Icon(icon, contentDescription = stringResource(label), tint = if (focused) Color.Black else Color.White, modifier = Modifier.fillMaxSize(0.56f))
     }
 }
 
@@ -348,14 +365,6 @@ internal fun formatTime(ms: Long): String {
 fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewModel, modifier: Modifier = Modifier) {
     val state = rememberNowPlayingState(viewModel)
     val playing = state.playing
-    var controlsVisible by remember { mutableStateOf(false) }
-    var wake by remember { mutableIntStateOf(0) }
-    LaunchedEffect(wake) {
-        if (wake == 0) return@LaunchedEffect
-        controlsVisible = true
-        delay(CONTROLS_HIDE_MS)
-        controlsVisible = false
-    }
 
     var feedbackIcon by remember { mutableStateOf<ImageVector?>(null) }
     var feedbackTick by remember { mutableIntStateOf(0) }
@@ -372,20 +381,15 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
 
     var scanning by remember { mutableStateOf(false) }
     DisposableEffect(Unit) { onDispose { if (scanning) viewModel.audioScanEnd() } }
-    val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
-    var rootFocused by remember { mutableStateOf(false) }
     var buttonFocused by remember { mutableStateOf(false) }
-    LaunchedEffect(controlsVisible) {
-        if (controlsVisible) playFocus.requestFocusUntilLanded(attempts = 10, isFocused = { buttonFocused })
-        else rootFocus.requestFocusUntilLanded(attempts = 10, isFocused = { rootFocused })
+    LaunchedEffect(Unit) {
+        playFocus.requestFocusUntilLanded(attempts = 10, isFocused = { buttonFocused })
     }
 
     Box(
         modifier
             .fillMaxSize()
-            // touch screens and pointer remotes (air mouse): a tap shows the controls
-            .pointerInput(Unit) { detectTapGestures { wake++ } }
             .onPreviewKeyEvent { e ->
                 // << and >> scan while held, like the hold buttons of the other layouts
                 if (e.key == Key.MediaRewind || e.key == Key.MediaFastForward) {
@@ -409,33 +413,22 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
                     Key.MediaNext -> send(SenderCommand.NEXT, Icons.Rounded.SkipNext)
                     Key.MediaPrevious -> send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious)
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter ->
-                        if (!controlsVisible || !buttonFocused) {
+                        if (!buttonFocused) {
                             playPause()
-                            wake++
                             true
                         } else {
-                            wake++
                             false
                         }
-                    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight -> {
-                        val hidden = !controlsVisible
-                        wake++
-                        hidden // the first press only shows the controls
-                    }
                     else -> false
                 }
-            }
-            .onFocusChanged { rootFocused = it.isFocused }
-            .focusRequester(rootFocus)
-            .focusProperties { canFocus = !controlsVisible }
-            .focusable(),
+            },
     ) {
         NowPlayingTv(
             state = state,
-            controlsVisible = controlsVisible,
-            onPrevious = { send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious); wake++ },
-            onPlayPause = { playPause(); wake++ },
-            onNext = { send(SenderCommand.NEXT, Icons.Rounded.SkipNext); wake++ },
+            controlsVisible = true,
+            onPrevious = { send(SenderCommand.PREVIOUS, Icons.Rounded.SkipPrevious) },
+            onPlayPause = { playPause() },
+            onNext = { send(SenderCommand.NEXT, Icons.Rounded.SkipNext) },
             modifier = Modifier.onFocusChanged { buttonFocused = it.hasFocus },
             playPauseFocus = playFocus,
         )
@@ -443,7 +436,6 @@ fun NowPlayingTvScreen(viewModel: io.github.jqssun.airplay.viewmodel.MainViewMod
     }
 }
 
-private const val CONTROLS_HIDE_MS = 5_000L
 private const val PROGRESS_TICK_MS = 500L
 
 /** Track metadata from the service and position and play state from the DACP player, refreshed twice a second. */
