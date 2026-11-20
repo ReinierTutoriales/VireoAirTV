@@ -383,18 +383,6 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             launch { svc.connectionCount.collect { _connectionCount.value = it } }
             launch { svc.videoAspect.collect { _videoAspect.value = it } }
             launch { svc.videoResolution.collect { _videoResolution.value = it } }
-            launch {
-                svc.audioOnly.collect { audio ->
-                    _audioOnly.value = audio
-                    if (audio) _videoSessionPending.value = false
-                }
-            }
-            launch {
-                svc.mirroringActive.collect { mirroring ->
-                    _mirroringActive.value = mirroring
-                    if (mirroring) _videoSessionPending.value = false
-                }
-            }
             launch { svc.mirrorSize.collect { _mirrorSize.value = it } }
             launch { svc.trackInfo.collect { _trackInfo.value = it } }
             launch { svc.videoDownloader.progress.collect { _videoDownloadProgress.value = it } }
@@ -414,11 +402,13 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
                 }
             }
             launch {
-                svc.videoPlaybackActive.collect { active ->
+                svc.session.collect { s ->
+                    _audioOnly.value = s.music
+                    _mirroringActive.value = s.mirroring
                     // update pending in the same step so the video screen never sees active=false, pending=stale
                     _videoSessionPending.value = svc.videoSessionPending()
-                    _videoPlaybackActive.value = active
-                    if (!active) {
+                    _videoPlaybackActive.value = s.video
+                    if (!s.video) {
                         _videoPositionMs.value = 0
                         _videoDurationMs.value = 0
                         _videoBuffering.value = false
@@ -427,7 +417,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
             }
             launch {
                 svc.videoPlaybackInfo.collect { info ->
-                    if (!svc.videoPlaybackActive.value) return@collect
+                    if (!svc.session.value.video) return@collect
                     _videoPositionMs.value = info.positionMs
                     _videoDurationMs.value = info.durationMs
                     if (SystemClock.elapsedRealtime() - _videoParamsActionAt > VIDEO_ACTION_SYNC_HOLD_MS) {
@@ -602,12 +592,13 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
 
     fun updateFromService() {
         service?.let {
+            val s = it.session.value
             _serverState.value = it.serverState.value
             _connectionCount.value = it.connectionCount.value
             _videoAspect.value = it.videoAspect.value
             _videoResolution.value = it.videoResolution.value
-            _audioOnly.value = it.audioOnly.value
-            val videoActive = it.videoPlaybackActive.value
+            _audioOnly.value = s.music
+            val videoActive = s.video
             val playSeq = it.videoPlaySeq.value
             if (playSeq != _lastVideoPlaySeq) {
                 // fresh /play (incl. back-to-back): drop stale overlay and scrub state
@@ -647,7 +638,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
                 _videoDurationMs.value = 0
                 _videoBuffering.value = false
             }
-            _mirroringActive.value = it.mirroringActive.value
+            _mirroringActive.value = s.mirroring
             _mirrorSize.value = it.mirrorSize.value
             _trackInfo.value = it.trackInfo.value
             updatePolledMetrics()
