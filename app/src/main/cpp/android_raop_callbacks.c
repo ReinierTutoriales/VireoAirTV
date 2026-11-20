@@ -267,6 +267,7 @@ static void _audio_flush(void *cls) {
 static void _audio_stop_coverart_rendering(void *cls) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     LOGI("audio_teardown");
+    if (ctx->audio_engine) audio_engine_flush(ctx->audio_engine);
     JNIEnv *env = _get_env(ctx);
     if (!env) return;
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_audio_teardown);

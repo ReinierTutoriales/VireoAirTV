@@ -37,8 +37,13 @@ class DacpController(ctx: Context) {
     val ready: Boolean get() = host.isNotEmpty() && activeRemote.isNotEmpty()
 
     fun update(dacpId: String, activeRemote: String) {
-        this.dacpId = dacpId
+        val normalized = if (dacpId.isBlank()) "" else dacpId.trim().uppercase().padStart(16, '0')
+        val sameId = normalized.isNotEmpty() && normalized == this.dacpId
+        this.dacpId = normalized
         this.activeRemote = activeRemote
+        if (sameId && host.isNotEmpty()) return
+        host = ""
+        port = 0
         _resolve()
     }
 
@@ -68,11 +73,10 @@ class DacpController(ctx: Context) {
 
     private fun _resolve() {
         _stopTracking()
-        val normalizedId = dacpId.trim().uppercase().padStart(16, '0')
-        if (dacpId.isBlank()) return
+        if (dacpId.isEmpty()) return
         val info = NsdServiceInfo().apply {
             serviceType = "_dacp._tcp"
-            serviceName = "iTunes_Ctrl_$normalizedId"
+            serviceName = "iTunes_Ctrl_$dacpId"
         }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) _track(info) else _resolveLegacy(info)

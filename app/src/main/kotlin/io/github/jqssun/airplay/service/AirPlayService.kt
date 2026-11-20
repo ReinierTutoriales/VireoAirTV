@@ -748,6 +748,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onDestroy() {
         _mainHandler.removeCallbacks(_feedbackWatchdog)
+        _mainHandler.removeCallbacks(_clearStaleTrackTask)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
         stopServer()
         dacpPlayer.release()
@@ -814,6 +815,15 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             // a new audio stream is the sender resuming, whatever was paused from the TV
             _localPauseAt = Long.MIN_VALUE / 2
             _setPlaying(true)
+            // if the previous stream tore down and the new app sends no metadata within 1.5 s, drop the old track
+            _mainHandler.removeCallbacks(_clearStaleTrackTask)
+            if (!_session.value.musicStream && _trackInfo.value.title.isNotEmpty() &&
+                SystemClock.elapsedRealtime() - _metadataAtMs > STALE_METADATA_GRACE_MS
+            ) {
+                _mainHandler.postDelayed(_clearStaleTrackTask, STALE_METADATA_GRACE_MS)
+            }
+        } else {
+            _mainHandler.removeCallbacks(_clearStaleTrackTask)
         }
         _transition(SessionEvent.AudioStarted(screen = usingScreen))
         log("Audio format: ct=$ct spf=$spf screen=$usingScreen")
@@ -1092,16 +1102,30 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     @Volatile private var _coverArtAtMs = 0L
+    @Volatile private var _metadataAtMs = 0L
+    private val _clearStaleTrackTask = Runnable {
+        // a new audio stream opened after teardown (e.g. switched to an app that sends no DMAP metadata):
+        // clear the previous app's song and artwork so they do not stay stuck over the new audio
+        _coverArtBytes = null
+        _coverArtAtMs = 0L
+        _trackInfo.value = TrackInfo()
+        _positionMs.value = 0
+        _durationMs.value = 0
+        _updateMediaMetadata()
+        _refreshDacpPlayer()
+    }
 
     override fun onMetadata(data: ByteArray) {
         val map = DmapParser.parse(data)
         val parsed = TrackInfo.fromDmap(map, null)
         // some senders emit an empty DMAP frame on transitions; ignore it instead of wiping current metadata
         if (parsed.title.isEmpty() && parsed.artist.isEmpty() && parsed.album.isEmpty()) return
+        _mainHandler.removeCallbacks(_clearStaleTrackTask)
+        _metadataAtMs = SystemClock.elapsedRealtime()
         val prev = _trackInfo.value
         val sameTrack = parsed.title == prev.title && parsed.artist == prev.artist && parsed.album == prev.album
         // iOS sometimes sends the new track's cover art just before its DMAP metadata; keep it if fresh
-        val freshArt = SystemClock.elapsedRealtime() - _coverArtAtMs <= COVER_ART_PRECEDES_METADATA_MS
+        val freshArt = _coverArtAtMs > 0L && SystemClock.elapsedRealtime() - _coverArtAtMs <= COVER_ART_PRECEDES_METADATA_MS
         val info = if (sameTrack || freshArt) {
             parsed.copy(coverArt = prev.coverArt)
         } else {
@@ -1149,6 +1173,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onAudioTeardown() {
+        _mainHandler.removeCallbacks(_clearStaleTrackTask)
+        // any cover art from the old stream must not be mistaken for pre-arriving art of a next app
+        _coverArtAtMs = 0L
         _transition(SessionEvent.AudioEnded)
         _setPlaying(false)
     }
@@ -1611,6 +1638,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val COVER_ART_MAX_PX = 1920
         private const val COVER_ART_JPEG_QUALITY = 90
         private const val COVER_ART_PRECEDES_METADATA_MS = 1_000L
+        private const val STALE_METADATA_GRACE_MS = 1_500L
         const val VIDEO_POLL_PENDING_TIMEOUT_MS = 3_000L
         // long enough for a sender to queue the next track, short enough that a real stop still exits
         const val VIDEO_HANDOFF_GRACE_MS = 6_000L
