@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ReinierTutoriales <86568548+ReinierTutoriales@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 20:59:00 -0500
+Subject: [PATCH] httpd: enable TCP_NODELAY and tighter mirror keepalive
+
+Disable Nagle (TCP_NODELAY) on accepted RTSP/HTTP and mirroring TCP sockets so
+small AirPlay control responses (/feedback, /playback-info, SETUP, EVENT) are
+not delayed by Nagle + delayed ACK. Also tighten mirror stream TCP keepalive
+from 120 s (60 + 10*6) to 30 s (15 + 5*3) as a faster native safety net.
+---
+ lib/httpd.c           | 12 ++++++++++++
+ lib/raop_rtp_mirror.c | 13 ++++++++++---
+ 2 files changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/lib/httpd.c b/lib/httpd.c
+--- a/lib/httpd.c
++++ b/lib/httpd.c
+@@ -21,6 +21,9 @@
+ #include <assert.h>
+ #include <stdbool.h>
+ #include <errno.h>
++#ifndef _WIN32
++#include <netinet/tcp.h>
++#endif
+ 
+ #include "httpd.h"
+ #include "netutils.h"
+@@ -302,6 +305,15 @@
+         logger_log(httpd->logger, LOGGER_ERR, "httpd: error in accept: %d %s",
+                    sock_err, SOCKET_ERROR_STRING(sock_err));
+         return -1;
++    }
++
++    {
++        int nodelay = 1;
++        if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
++            int sock_err = SOCKET_GET_ERROR();
++            logger_log(httpd->logger, LOGGER_WARNING, "httpd: could not set TCP_NODELAY: %d %s",
++                       sock_err, SOCKET_ERROR_STRING(sock_err));
++        }
+     }
+ 
+     local_saddrlen = sizeof(local_saddr);
+
+diff --git a/lib/raop_rtp_mirror.c b/lib/raop_rtp_mirror.c
+--- a/lib/raop_rtp_mirror.c
++++ b/lib/raop_rtp_mirror.c
+@@ -251,6 +251,13 @@
+                 break;
+             }
+ 
++            int nodelay = 1;
++            if (setsockopt(stream_fd, IPPROTO_TCP, TCP_NODELAY, CAST &nodelay, sizeof(nodelay)) < 0) {
++                int sock_err = SOCKET_GET_ERROR();
++                logger_log(raop_rtp_mirror->logger, LOGGER_WARNING,
++                           "raop_rtp_mirror could not set stream socket TCP_NODELAY %d %s", sock_err, SOCKET_ERROR_STRING(sock_err));
++            }
++
+             // We're calling recv for a certain amount of data, so we need a timeout
+             struct timeval tv;
+             tv.tv_sec = 0;
+@@ -268,7 +275,7 @@
+                 logger_log(raop_rtp_mirror->logger, LOGGER_WARNING,
+                            "raop_rtp_mirror could not set stream socket keepalive %d %s", sock_err, SOCKET_ERROR_STRING(sock_err));
+             }
+-            option = 60;
++            option = 15;
+             if (setsockopt(stream_fd, SOL_TCP, TCP_KEEPIDLE, CAST &option, sizeof(option)) < 0) {
+                 int sock_err = SOCKET_GET_ERROR();
+                 logger_log(raop_rtp_mirror->logger, LOGGER_WARNING,
+@@ -276,13 +283,13 @@
+             }
+ /* OpenBSD does not have these options.  */
+ #ifndef __OpenBSD__
+-            option = 10;
++            option = 5;
+             if (setsockopt(stream_fd, SOL_TCP, TCP_KEEPINTVL, CAST &option, sizeof(option)) < 0) {
+                 int sock_err = SOCKET_GET_ERROR();
+                 logger_log(raop_rtp_mirror->logger, LOGGER_WARNING,
+                            "raop_rtp_mirror could not set stream socket keepalive interval %d %s", sock_err, SOCKET_ERROR_STRING(sock_err));
+             }
+-            option = 6;
++            option = 3;
+             if (setsockopt(stream_fd, SOL_TCP, TCP_KEEPCNT, CAST &option, sizeof(option)) < 0) {
+                 int sock_err = SOCKET_GET_ERROR();
+                 logger_log(raop_rtp_mirror->logger, LOGGER_WARNING,
