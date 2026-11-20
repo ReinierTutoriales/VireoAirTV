@@ -41,7 +41,7 @@ class DacpController(ctx: Context) {
         val sameId = normalized.isNotEmpty() && normalized == this.dacpId
         this.dacpId = normalized
         this.activeRemote = activeRemote
-        if (sameId && host.isNotEmpty()) return
+        if (sameId && (host.isNotEmpty() || infoCallback != null)) return
         host = ""
         port = 0
         _resolve()
@@ -171,6 +171,8 @@ class DacpController(ctx: Context) {
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "DACP send failed: $path", e)
+                    // sender may have reopened its DACP listener on a new port; re-resolve on next attempt
+                    mainHandler.post { _resolve() }
                     result.setException(e)
                 }
             }

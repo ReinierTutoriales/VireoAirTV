@@ -1101,13 +1101,18 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _launchForContent()
     }
 
-    @Volatile private var _coverArtAtMs = 0L
+    // set only when a new, distinct cover art arrives; cleared once a track claims it
+    @Volatile private var _unclaimedCoverArtAtMs = 0L
+    @Volatile private var _lastCoverArtHash = 0
+    @Volatile private var _lastCoverArtSize = 0
     @Volatile private var _metadataAtMs = 0L
     private val _clearStaleTrackTask = Runnable {
         // a new audio stream opened after teardown (e.g. switched to an app that sends no DMAP metadata):
         // clear the previous app's song and artwork so they do not stay stuck over the new audio
         _coverArtBytes = null
-        _coverArtAtMs = 0L
+        _unclaimedCoverArtAtMs = 0L
+        _lastCoverArtHash = 0
+        _lastCoverArtSize = 0
         _trackInfo.value = TrackInfo()
         _positionMs.value = 0
         _durationMs.value = 0
@@ -1124,13 +1129,22 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _metadataAtMs = SystemClock.elapsedRealtime()
         val prev = _trackInfo.value
         val sameTrack = parsed.title == prev.title && parsed.artist == prev.artist && parsed.album == prev.album
-        // iOS sometimes sends the new track's cover art just before its DMAP metadata; keep it if fresh
-        val freshArt = _coverArtAtMs > 0L && SystemClock.elapsedRealtime() - _coverArtAtMs <= COVER_ART_PRECEDES_METADATA_MS
-        val info = if (sameTrack || freshArt) {
+        // iOS sometimes sends the new track's cover art just before its DMAP metadata; keep it only if unclaimed
+        val preArrivedArt = _unclaimedCoverArtAtMs > 0L &&
+            SystemClock.elapsedRealtime() - _unclaimedCoverArtAtMs <= COVER_ART_PRECEDES_METADATA_MS
+        _unclaimedCoverArtAtMs = 0L
+        val info = if (sameTrack || preArrivedArt) {
             parsed.copy(coverArt = prev.coverArt)
         } else {
             _coverArtBytes = null
+            _lastCoverArtHash = 0
+            _lastCoverArtSize = 0
             parsed
+        }
+        if (!sameTrack) {
+            _positionMs.value = 0
+            _progressBaseMs = 0
+            _progressBaseTime = SystemClock.elapsedRealtime()
         }
         _trackInfo.value = info
         if (info.durationMs > 0) _durationMs.value = info.durationMs
@@ -1140,16 +1154,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onCoverArt(data: ByteArray) {
+        val hash = data.contentHashCode()
+        // senders re-push the same JPEG periodically during a track; skip re-decoding and re-animating it
+        if (hash == _lastCoverArtHash && data.size == _lastCoverArtSize && _trackInfo.value.coverArt != null) return
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= COVER_ART_MAX_PX) sample *= 2
         val bmp = BitmapFactory.decodeByteArray(data, 0, data.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
+        _lastCoverArtHash = hash
+        _lastCoverArtSize = data.size
         // the session decodes artwork again: hand it the reduced image, not the sender's original
         _coverArtBytes = if (sample == 1) data else ByteArrayOutputStream().also {
             bmp.compress(Bitmap.CompressFormat.JPEG, COVER_ART_JPEG_QUALITY, it)
         }.toByteArray()
-        _coverArtAtMs = SystemClock.elapsedRealtime()
+        // if the current track already had its own cover art (or no track metadata has arrived yet),
+        // this new image may be pre-arriving art for an upcoming track change
+        if (_trackInfo.value.coverArt != null || _trackInfo.value.title.isEmpty()) {
+            _unclaimedCoverArtAtMs = SystemClock.elapsedRealtime()
+        } else {
+            _unclaimedCoverArtAtMs = 0L
+        }
         _trackInfo.value = _trackInfo.value.copy(coverArt = bmp)
         _updateMediaMetadata()
         _refreshDacpPlayer()
@@ -1175,7 +1200,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     override fun onAudioTeardown() {
         _mainHandler.removeCallbacks(_clearStaleTrackTask)
         // any cover art from the old stream must not be mistaken for pre-arriving art of a next app
-        _coverArtAtMs = 0L
+        _unclaimedCoverArtAtMs = 0L
         _transition(SessionEvent.AudioEnded)
         _setPlaying(false)
     }
@@ -1221,8 +1246,12 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             if (next.music) {
                 _setSessionActive(true)
             } else {
+                _mainHandler.removeCallbacks(_clearStaleTrackTask)
                 _setSessionActive(false)
                 _coverArtBytes = null
+                _unclaimedCoverArtAtMs = 0L
+                _lastCoverArtHash = 0
+                _lastCoverArtSize = 0
                 _trackInfo.value = TrackInfo()
                 _positionMs.value = 0
                 _durationMs.value = 0
