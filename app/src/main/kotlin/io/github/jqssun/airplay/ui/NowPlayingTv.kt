@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -109,45 +110,46 @@ fun NowPlayingTv(
     BoxWithConstraints(modifier.fillMaxSize().background(Color.Black)) {
         if (state.artwork != null) {
             ArtworkBackdrop(state.artwork, Modifier.fillMaxSize())
-            // a soft vignette keeps white text readable over bright artwork
+            // soft horizontal + radial vignette keeps white typography crisp over bright album art
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.45f))))
+                    .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.08f), Color.Black.copy(alpha = 0.42f))))
             )
         } else {
-            // subtle ambient backdrop for audio apps that do not send cover art over RAOP
+            // deep ambient backdrop for audio apps that do not send cover art over RAOP
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color(0xFF1A1E2E), Color(0xFF0A0B10))))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF1A2033), Color(0xFF0A0B10))))
             )
         }
 
         // tvOS safe area is about 5 % of each side; the artwork takes a bit over half the height
-        val art = min(maxHeight * 0.56f, maxWidth * 0.36f)
-        val gap = maxWidth * 0.045f
-        val textWidth = min(maxWidth * 0.42f, maxWidth - art - gap - maxWidth * 0.16f)
+        val art = min(maxHeight * 0.58f, maxWidth * 0.36f)
+        val gap = maxWidth * 0.048f
+        val textWidth = min(maxWidth * 0.44f, maxWidth - art - gap - maxWidth * 0.14f)
         val scale = (maxHeight / 540.dp).coerceIn(0.75f, 2.2f)
 
         val artScale by animateFloatAsState(
-            targetValue = if (state.playing) 1f else 0.9f,
+            targetValue = if (state.playing) 1f else 0.91f,
             animationSpec = tween(Motion.LONG_MS, easing = Motion.Ease),
             label = "artScale",
         )
 
-        val artModifier = Modifier.graphicsLayer { scaleX = artScale; scaleY = artScale; alpha = if (state.playing) 1f else 0.85f }
+        val artModifier = Modifier.graphicsLayer { scaleX = artScale; scaleY = artScale; alpha = if (state.playing) 1f else 0.86f }
         if (maxWidth < maxHeight) {
             // portrait (a phone in full screen): artwork above, text and controls below
             val w = maxWidth
             val h = maxHeight
+            val portraitScale = (w / 400.dp).coerceIn(0.75f, 1.4f)
             Column(
                 modifier = Modifier.fillMaxSize().padding(horizontal = w * 0.08f, vertical = h * 0.06f),
                 verticalArrangement = Arrangement.spacedBy(h * 0.04f, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                NowPlayingArt(state.artwork, artModifier.size(min(w * 0.84f, h * 0.48f)))
-                NowPlayingInfo(state, controlsVisible, (w / 400.dp).coerceIn(0.75f, 1.4f), Modifier.fillMaxWidth(),
+                NowPlayingArt(state.artwork, portraitScale, artModifier.size(min(w * 0.84f, h * 0.48f)))
+                NowPlayingInfo(state, controlsVisible, portraitScale, Modifier.fillMaxWidth(),
                     onPrevious, onPlayPause, onNext, playPauseFocus, centered = true)
             }
             return@BoxWithConstraints
@@ -159,7 +161,7 @@ fun NowPlayingTv(
             horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NowPlayingArt(state.artwork, artModifier.size(art))
+            NowPlayingArt(state.artwork, scale, artModifier.size(art))
             NowPlayingInfo(state, controlsVisible, scale, Modifier.width(textWidth), onPrevious, onPlayPause, onNext, playPauseFocus)
         }
     }
@@ -184,30 +186,39 @@ private fun NowPlayingInfo(
                     animationSpec = tween(Motion.MEDIUM_MS, easing = Motion.Ease),
                     label = "trackText",
                 ) { (title, artist, album) ->
-                    Column {
+                    Column(horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start) {
                         Text(
                             text = title,
-                            style = TextStyle(fontSize = (30 * scale).sp, fontWeight = FontWeight.SemiBold, lineHeight = (36 * scale).sp),
+                            style = TextStyle(
+                                fontSize = (32 * scale).sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = (38 * scale).sp,
+                                letterSpacing = (-0.5 * scale).sp,
+                            ),
                             color = Color.White,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (artist.isNotEmpty()) {
-                            Spacer(Modifier.height(6.dp * scale))
+                            Spacer(Modifier.height(8.dp * scale))
                             Text(
                                 text = artist,
-                                style = TextStyle(fontSize = (20 * scale).sp, fontWeight = FontWeight.Medium),
-                                color = Color.White.copy(alpha = 0.78f),
+                                style = TextStyle(
+                                    fontSize = (21 * scale).sp,
+                                    fontWeight = FontWeight.Medium,
+                                    letterSpacing = (-0.15 * scale).sp,
+                                ),
+                                color = Color.White.copy(alpha = 0.84f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
                         if (album.isNotEmpty()) {
-                            Spacer(Modifier.height(2.dp * scale))
+                            Spacer(Modifier.height(3.dp * scale))
                             Text(
                                 text = album,
-                                style = TextStyle(fontSize = (17 * scale).sp),
-                                color = Color.White.copy(alpha = 0.55f),
+                                style = TextStyle(fontSize = (17 * scale).sp, fontWeight = FontWeight.Normal),
+                                color = Color.White.copy(alpha = 0.58f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -243,13 +254,14 @@ private fun NowPlayingInfo(
 }
 
 @Composable
-private fun NowPlayingArt(artwork: Bitmap?, modifier: Modifier) {
-    val shape = RoundedCornerShape(12.dp)
+private fun NowPlayingArt(artwork: Bitmap?, scale: Float, modifier: Modifier) {
+    val shape = RoundedCornerShape(16.dp * scale)
     Box(
         modifier = modifier
-            .shadow(32.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .shadow(36.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(shape)
-            .background(Color(0xFF2C2C2E)),
+            .background(Brush.linearGradient(listOf(Color(0xFF2C2F3E), Color(0xFF1A1C24))))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), shape),
         contentAlignment = Alignment.Center,
     ) {
         Crossfade(artwork, animationSpec = tween(Motion.SHORT_MS, easing = Motion.Ease), label = "art") { bmp ->
@@ -272,21 +284,26 @@ private fun ProgressLine(positionMs: Long, durationMs: Long, scale: Float) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(5.dp * scale)
+                .height(6.dp * scale)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.22f))
+                .background(Color.White.copy(alpha = 0.18f))
         ) {
             Box(
                 Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(fraction)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f))
+                    .background(Color.White.copy(alpha = 0.92f))
             )
         }
-        Spacer(Modifier.height(6.dp * scale))
+        Spacer(Modifier.height(8.dp * scale))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            val time = TextStyle(fontSize = (13 * scale).sp, fontWeight = FontWeight.Medium, color = Color.White.copy(alpha = 0.6f))
+            val time = TextStyle(
+                fontSize = (13 * scale).sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.65f),
+                fontFeatureSettings = "tnum",
+            )
             Text(formatTime(positionMs), style = time)
             Text("−" + formatTime((durationMs - positionMs).coerceAtLeast(0)), style = time)
         }
